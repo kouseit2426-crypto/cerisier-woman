@@ -41,10 +41,21 @@
     background: var(--page-plane);
     color: var(--text-primary);
   }
-  .wrap { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px; }
   header { margin-bottom: 28px; }
   header h1 { font-size: 30px; margin: 0 0 4px; }
   header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+
+  .app-layout { display: flex; align-items: flex-start; gap: 24px; }
+  .sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 20px; }
+  .sidebar .card { margin-bottom: 18px; }
+  .sidebar .card:last-child { margin-bottom: 0; }
+  .sidebar-label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
+  .main-content { flex: 1; min-width: 0; }
+  @media (max-width: 860px) {
+    .app-layout { flex-direction: column; }
+    .sidebar { width: 100%; position: static; }
+  }
 
   .card {
     background: var(--surface-1);
@@ -86,7 +97,16 @@
   }
   .match-chip.selected { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
 
-  #detailCard, #detailCard2, #mainArea { display: none; }
+  #detailCard, #detailCard2, #mainArea, #comparisonCard { display: none; }
+
+  .comparison-table td, .comparison-table th { text-align: center; }
+  .comparison-table td:first-child, .comparison-table th:first-child {
+    text-align: left; position: sticky; left: 0; background: var(--surface-1);
+  }
+  .comparison-table .section-row td {
+    text-align: left; background: var(--grid); font-weight: 600; font-size: 13px;
+    color: var(--text-secondary);
+  }
 
   .page { display: none; }
   .page.active { display: block; }
@@ -117,6 +137,9 @@
   th { color: var(--text-muted); font-weight: 500; font-size: 12px; }
   .hint { color: var(--text-muted); font-size: 12px; margin-top: 10px; }
 
+  .rotation-table th, .rotation-table td { font-size: 15px; padding: 11px 13px; }
+  .rotation-table th { font-size: 13px; }
+
   .score-chart { margin-bottom: 28px; }
   .score-chart:last-child { margin-bottom: 0; }
   .score-chart-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
@@ -133,21 +156,31 @@
     <p>試合を選ぶと、その試合のスタッツが表示されます</p>
   </header>
 
-  <div class="card drop-zone-card">
-    <div class="label" style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">.dvwファイルを追加</div>
-    <div id="dropZone" class="drop-zone">
-      .dvwファイルをここにドラッグ&ドロップ<br>（またはクリックしてファイルを選ぶ）<br>その場ですぐスタッツが見られます
+  <div class="app-layout">
+  <div class="sidebar">
+    <div class="card drop-zone-card">
+      <div class="sidebar-label">.dvwファイルを追加</div>
+      <div id="dropZone" class="drop-zone">
+        .dvwファイルをここにドラッグ&ドロップ<br>（またはクリックしてファイルを選ぶ）<br>その場ですぐスタッツが見られます
+      </div>
+      <input type="file" id="dvwFileInput" accept=".dvw" style="display:none">
+      <div class="drop-zone-status" id="dropZoneStatus"></div>
     </div>
-    <input type="file" id="dvwFileInput" accept=".dvw" style="display:none">
-    <div class="drop-zone-status" id="dropZoneStatus"></div>
+
+    <div class="card">
+      <div class="sidebar-label">試合を選択</div>
+      <div class="player-grid" id="matchSelector"></div>
+      <p class="hint" id="noMatchesHint" style="display:none">まだ試合データがありません。</p>
+    </div>
+
+    <div class="card" id="playerSelectCard" style="display:none">
+      <div class="sidebar-label">選手を選択</div>
+      <div class="player-grid" id="teamGrid"></div>
+      <div class="player-grid" id="playerGrid" style="margin-top:8px;"></div>
+    </div>
   </div>
 
-  <div class="match-bar">
-    <div class="label">試合を選択</div>
-    <div class="player-grid" id="matchSelector"></div>
-    <p class="hint" id="noMatchesHint" style="display:none">まだ試合データがありません。</p>
-  </div>
-
+  <div class="main-content">
   <div id="mainArea">
   <h2 id="matchTitle" style="font-size:20px;margin:0 0 16px;color:var(--text-secondary)"></h2>
 
@@ -157,12 +190,6 @@
   </div>
 
   <div class="page active" id="page1">
-    <div class="card">
-      <h2>選手を選択</h2>
-      <div class="player-grid" id="teamGrid"></div>
-      <div class="player-grid" id="playerGrid" style="margin-top:8px;"></div>
-    </div>
-
     <div class="card" id="detailCard">
       <div class="detail-header">
         <h2 id="detailName"></h2>
@@ -189,20 +216,24 @@
       <h3 class="section-label" id="receiveSectionLabel">レシーブ（全セット合計）</h3>
       <div class="stat-tiles" id="receiveTiles"></div>
     </div>
+
+    <div class="card" id="comparisonCard">
+      <div class="detail-header">
+        <h2 id="comparisonTitle"></h2>
+      </div>
+      <p class="hint" style="margin-top:-6px">選手を2人以上選ぶと、ここに並べて比較表示されます。もう一度チップを押すと選択解除できます。</p>
+      <div id="comparisonBody"></div>
+    </div>
   </div>
 
   <div class="page" id="page2">
     <div class="card">
       <h3 class="section-label" style="margin-top:0">サイドアウト率・ブレイク率（チーム全体）</h3>
       <p class="hint" style="margin-top:-6px">
-        サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。
+        サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。セットを選んでください。
       </p>
-      <table>
-        <thead>
-          <tr><th>セット</th><th>サーブ本数</th><th>ブレイク率</th><th>レシーブ本数</th><th>サイドアウト率</th></tr>
-        </thead>
-        <tbody id="sideOutBreakBody"></tbody>
-      </table>
+      <div class="player-grid" id="sideOutBreakSetButtons"></div>
+      <div class="stat-tiles" id="sideOutBreakTiles" style="margin-top:16px"></div>
     </div>
 
     <div class="card" id="scoreProgressionCard">
@@ -218,10 +249,13 @@
       <h3 class="section-label" style="margin-top:0">ローテーション別 攻撃タイプ分布（チーム全体）</h3>
       <p class="hint" style="margin-top:-6px">
         セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。
-        攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。
+        攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。セットを選んでください。
       </p>
-      <div id="rotationTables"></div>
+      <div class="player-grid" id="rotationSetButtons"></div>
+      <div id="rotationTables" style="margin-top:16px"></div>
     </div>
+  </div>
+  </div>
   </div>
   </div>
 </div>
@@ -695,10 +729,13 @@ function handleDvwFile(file) {
     // その場ですぐ表示する
     DATA = data;
     document.getElementById('mainArea').style.display = 'block';
+    document.getElementById('playerSelectCard').style.display = 'block';
     document.getElementById('matchTitle').textContent =
       `${DATA.teamLabel} 対 ${DATA.opponent}（${DATA.matchDate}）`;
     document.getElementById('detailCard').style.display = 'none';
     document.getElementById('detailCard2').style.display = 'none';
+    document.getElementById('comparisonCard').style.display = 'none';
+    selectedPlayerNumbers.clear();
     document.querySelectorAll('.match-chip').forEach(c => c.classList.remove('selected'));
     renderTeamGrid();
     renderPlayerGrid(DATA.total);
@@ -872,20 +909,121 @@ function showDetail(name, subLabel, totalStats, setRows) {
   }
 }
 
+let selectedPlayerNumbers = new Set();
+
 function selectPlayer(number, chipEl) {
-  markSelected(chipEl);
-  const p = DATA.total.find(pp => pp.number === number);
-  if (!p) return;
-  const setRows = DATA.sets.map(s => {
-    const sp = s.players.find(pp => pp.number === number);
-    return sp ? { ...sp, setNumber: s.setNumber } : null;
-  });
-  showDetail(p.name, `#${p.number} ／ 全セット合計`, p, setRows);
+  document.querySelectorAll('#teamGrid .player-chip').forEach(c => c.classList.remove('selected'));
+  if (selectedPlayerNumbers.has(number)) {
+    selectedPlayerNumbers.delete(number);
+    chipEl.classList.remove('selected');
+  } else {
+    selectedPlayerNumbers.add(number);
+    chipEl.classList.add('selected');
+  }
+  renderPlayerSelection();
 }
 
-function rotationTableHtml(rows, title) {
-  let html = `<h4 style="margin:18px 0 8px;font-size:13px;color:var(--text-muted)">${title}</h4>`;
-  html += '<div style="overflow-x:auto"><table style="min-width:920px">';
+function renderPlayerSelection() {
+  const nums = Array.from(selectedPlayerNumbers);
+  if (nums.length === 0) {
+    document.getElementById('detailCard').style.display = 'none';
+    document.getElementById('detailCard2').style.display = 'none';
+    document.getElementById('comparisonCard').style.display = 'none';
+  } else if (nums.length === 1) {
+    document.getElementById('comparisonCard').style.display = 'none';
+    const p = DATA.total.find(pp => pp.number === nums[0]);
+    if (!p) return;
+    const setRows = DATA.sets.map(s => {
+      const sp = s.players.find(pp => pp.number === nums[0]);
+      return sp ? { ...sp, setNumber: s.setNumber } : null;
+    });
+    showDetail(p.name, `#${p.number} ／ 全セット合計`, p, setRows);
+  } else {
+    document.getElementById('detailCard').style.display = 'none';
+    document.getElementById('detailCard2').style.display = 'none';
+    showComparison(nums);
+  }
+}
+
+function comparisonRowHtml(label, players, getter, isPct) {
+  let html = `<tr><td>${escapeHtml(label)}</td>`;
+  players.forEach(p => {
+    const v = getter(p);
+    html += `<td>${isPct ? pct(v) : v}</td>`;
+  });
+  html += '</tr>';
+  return html;
+}
+
+function comparisonSectionHtml(title, colspan) {
+  return `<tr class="section-row"><td colspan="${colspan}">${escapeHtml(title)}</td></tr>`;
+}
+
+function comparisonTableHtml(players) {
+  const colspan = players.length + 1;
+  const hasBlock = players.some(p => p.block_attempts > 0);
+  const hasServe = players.some(p => p.serve_attempts > 0);
+  const hasReceive = players.some(p => p.receive_attempts > 0);
+
+  let html = '<div style="overflow-x:auto"><table class="rotation-table comparison-table">';
+  html += '<thead><tr><th>項目</th>';
+  players.forEach(p => {
+    html += `<th>${escapeHtml(p.name)}<br><span style="font-weight:400;font-size:12px">#${p.number}</span></th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  html += comparisonSectionHtml('アタック（全セット合計）', colspan);
+  html += comparisonRowHtml('打数', players, p => p.attempts, false);
+  html += comparisonRowHtml('得点', players, p => p.points, false);
+  html += comparisonRowHtml('ミス', players, p => p.errors, false);
+  html += comparisonRowHtml('決定率', players, p => p.kill_rate, true);
+  html += comparisonRowHtml('効果率', players, p => p.efficiency, true);
+
+  if (hasBlock) {
+    html += comparisonSectionHtml('ブロック（全セット合計）', colspan);
+    html += comparisonRowHtml('本数', players, p => p.block_attempts, false);
+    html += comparisonRowHtml('得点', players, p => p.block_points, false);
+    html += comparisonRowHtml('ワンチ', players, p => p.block_touch_own + p.block_touch_opp, false);
+    html += comparisonRowHtml('失点', players, p => p.block_errors, false);
+  }
+
+  if (hasServe) {
+    html += comparisonSectionHtml('サーブ（全セット合計）', colspan);
+    html += comparisonRowHtml('打数', players, p => p.serve_attempts, false);
+    html += comparisonRowHtml('エース', players, p => p.serve_aces, false);
+    html += comparisonRowHtml('ミス', players, p => p.serve_errors, false);
+    html += comparisonRowHtml('エース率', players, p => p.serve_ace_rate, true);
+    html += comparisonRowHtml('ミス率', players, p => p.serve_error_rate, true);
+    html += comparisonRowHtml('効果率', players, p => p.serve_efficiency, true);
+  }
+
+  if (hasReceive) {
+    html += comparisonSectionHtml('レシーブ（全セット合計）', colspan);
+    html += comparisonRowHtml('本数', players, p => p.receive_attempts, false);
+    html += comparisonRowHtml('Aパス', players, p => p.receive_a, false);
+    html += comparisonRowHtml('Bパス', players, p => p.receive_b, false);
+    html += comparisonRowHtml('Cパス', players, p => p.receive_c, false);
+    html += comparisonRowHtml('Dパス', players, p => p.receive_d, false);
+    html += comparisonRowHtml('ミス', players, p => p.receive_errors, false);
+    html += comparisonRowHtml('返球率', players, p => p.receive_return_rate, true);
+    html += comparisonRowHtml('A率', players, p => p.receive_a_rate, true);
+  }
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function showComparison(nums) {
+  const players = nums
+    .map(n => DATA.total.find(pp => pp.number === n))
+    .filter(Boolean);
+  document.getElementById('comparisonCard').style.display = 'block';
+  document.getElementById('comparisonTitle').textContent = `選手比較（${players.length}人）`;
+  document.getElementById('comparisonBody').innerHTML = comparisonTableHtml(players);
+}
+
+function rotationTableHtml(rows) {
+  let html = '<div style="overflow-x:auto"><table class="rotation-table" style="min-width:920px">';
   html += '<thead><tr><th>ローテ</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th>';
   CATEGORY_ORDER.forEach(cat => {
     html += `<th>${CATEGORY_LABELS[cat]}本数</th><th>${CATEGORY_LABELS[cat]}決定率</th>`;
@@ -999,32 +1137,61 @@ function showScoreProgressionCharts() {
   }
 }
 
+function selectRotationSet(rows, chipEl) {
+  document.querySelectorAll('#rotationSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
+  document.getElementById('rotationTables').innerHTML = rotationTableHtml(rows);
+}
+
 function showRotationTables() {
-  const el = document.getElementById('rotationTables');
-  let html = '';
-  DATA.rotation.bySet.forEach(s => {
-    html += rotationTableHtml(s.rows, `第${s.setNumber}セット`);
+  const btnEl = document.getElementById('rotationSetButtons');
+  btnEl.innerHTML = '';
+  const items = DATA.rotation.bySet.map(s => ({ label: `第${s.setNumber}セット`, rows: s.rows }));
+  items.push({ label: '全セット合計', rows: DATA.rotation.total.rows });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectRotationSet(item.rows, chip));
+    if (idx === items.length - 1) chip.classList.add('selected');
+    btnEl.appendChild(chip);
   });
-  html += rotationTableHtml(DATA.rotation.total.rows, '全セット合計');
-  el.innerHTML = html;
+  const last = items[items.length - 1];
+  document.getElementById('rotationTables').innerHTML = rotationTableHtml(last.rows);
 }
 
 function selectTeam(chipEl) {
+  selectedPlayerNumbers.clear();
   markSelected(chipEl);
+  document.getElementById('comparisonCard').style.display = 'none';
   showDetail(DATA.team.name, 'チーム合計 ／ 全セット合計', DATA.team.total, DATA.team.sets);
 }
 
+function selectSideOutBreakSet(s, chipEl) {
+  document.querySelectorAll('#sideOutBreakSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
+  document.getElementById('sideOutBreakTiles').innerHTML =
+      `<div class="stat-tile"><div class="k">サーブ本数</div><div class="v">${s.serve_total}</div></div>`
+    + `<div class="stat-tile"><div class="k">ブレイク率</div><div class="v">${pct(s.break_rate)}</div></div>`
+    + `<div class="stat-tile"><div class="k">レシーブ本数</div><div class="v">${s.receive_total}</div></div>`
+    + `<div class="stat-tile"><div class="k">サイドアウト率</div><div class="v">${pct(s.side_out_rate)}</div></div>`;
+}
+
 function showSideOutBreakTable() {
-  const body = document.getElementById('sideOutBreakBody');
-  let html = '';
-  DATA.sideOutBreak.bySet.forEach(s => {
-    html += `<tr><td>第${s.setNumber}セット</td><td>${s.serve_total}</td><td>${pct(s.break_rate)}</td>`
-          + `<td>${s.receive_total}</td><td>${pct(s.side_out_rate)}</td></tr>`;
+  const btnEl = document.getElementById('sideOutBreakSetButtons');
+  btnEl.innerHTML = '';
+  const items = DATA.sideOutBreak.bySet.map(s => ({ label: `第${s.setNumber}セット`, data: s }));
+  items.push({ label: '合計', data: DATA.sideOutBreak.total });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectSideOutBreakSet(item.data, chip));
+    if (idx === items.length - 1) chip.classList.add('selected');
+    btnEl.appendChild(chip);
   });
-  const t = DATA.sideOutBreak.total;
-  html += `<tr><td>合計</td><td>${t.serve_total}</td><td>${pct(t.break_rate)}</td>`
-        + `<td>${t.receive_total}</td><td>${pct(t.side_out_rate)}</td></tr>`;
-  body.innerHTML = html;
+  const last = items[items.length - 1];
+  selectSideOutBreakSet(last.data, btnEl.children[items.length - 1]);
 }
 
 function showPage(n) {
@@ -1059,10 +1226,13 @@ function loadMatch(entry, chipEl) {
         if (chips.length) chips[0].classList.add('selected');
       }
       document.getElementById('mainArea').style.display = 'block';
+      document.getElementById('playerSelectCard').style.display = 'block';
       document.getElementById('matchTitle').textContent =
         `${DATA.teamLabel} 対 ${DATA.opponent}（${DATA.matchDate}）`;
       document.getElementById('detailCard').style.display = 'none';
       document.getElementById('detailCard2').style.display = 'none';
+      document.getElementById('comparisonCard').style.display = 'none';
+      selectedPlayerNumbers.clear();
       renderTeamGrid();
       renderPlayerGrid(DATA.total);
       showRotationTables();
