@@ -69,6 +69,21 @@
 
   .match-bar { margin-bottom: 18px; }
   .match-bar .label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
+
+  .drop-zone-card { margin-bottom: 18px; }
+  .drop-zone {
+    border: 2px dashed var(--baseline); border-radius: 10px; padding: 20px;
+    text-align: center; cursor: pointer; color: var(--text-muted); font-size: 13px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s; line-height: 1.7;
+  }
+  .drop-zone.drag-over { border-color: var(--series-blue); background: var(--page-plane); color: var(--text-primary); }
+  .drop-zone-status { margin-top: 10px; }
+  .drop-zone-status .hint { margin-top: 4px; }
+  .dl-btn {
+    display: inline-block; margin: 6px 8px 0 0; padding: 7px 14px; border-radius: 8px;
+    background: var(--series-blue); color: #fff; font-size: 12.5px; font-weight: 600;
+    text-decoration: none; border: none; cursor: pointer;
+  }
   .match-chip.selected { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
 
   #detailCard, #detailCard2, #mainArea { display: none; }
@@ -117,6 +132,15 @@
     <h1 id="teamTitle"></h1>
     <p>試合を選ぶと、その試合のスタッツが表示されます</p>
   </header>
+
+  <div class="card drop-zone-card">
+    <div class="label" style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px">.dvwファイルを追加</div>
+    <div id="dropZone" class="drop-zone">
+      .dvwファイルをここにドラッグ&ドロップ<br>（またはクリックしてファイルを選ぶ）<br>その場ですぐスタッツが見られます
+    </div>
+    <input type="file" id="dvwFileInput" accept=".dvw" style="display:none">
+    <div class="drop-zone-status" id="dropZoneStatus"></div>
+  </div>
 
   <div class="match-bar">
     <div class="label">試合を選択</div>
@@ -204,6 +228,532 @@
 </div>
 
 <script>
+// ==================== dvwファイルをブラウザだけで解析するエンジン ====================
+// Python版(stats.py)の集計ロジックと完全に同じ考え方で書いている。
+// 何か数字が合わないときは、まずstats.py側の同じ関数名のコメントを読むと分かりやすい。
+// OWN_TEAM_CODE と ROSTER は、実際のHTMLではチームごとの値に置き換えて埋め込む。
+
+const CATEGORY_ORDER = ['left', 'right', 'middle', 'pipe', 'other'];
+const CATEGORY_LABELS = { left: 'レフト', right: 'ライト', middle: 'ミドル', pipe: 'パイプ', other: 'その他' };
+const COMBO_CATEGORY_MAP = { F: 'left', B: 'right', C: 'middle', P: 'pipe' };
+
+const DV_SCORE_RE = /^([*a])p(\d+):(\d+)/;
+const DV_ACTION_RE = /^([*a])(\d\d)([ABSR])([A-Za-z])([#+\-!=/])([A-Z0-9]{2})?/;
+
+function dvRate(numerator, denominator) {
+  if (!denominator) return null;
+  return numerator / denominator;
+}
+
+function dvEmptyPlayerStats() {
+  return {
+    attempts: 0, points: 0, errors: 0, blocked: 0,
+    back_attempts: 0, back_points: 0, back_errors: 0,
+    block_attempts: 0, block_points: 0, block_errors: 0,
+    block_touch_own: 0, block_touch_opp: 0,
+    serve_attempts: 0, serve_aces: 0, serve_errors: 0,
+    receive_attempts: 0, receive_a: 0, receive_b: 0,
+    receive_c: 0, receive_d: 0, receive_errors: 0,
+  };
+}
+
+function dvEmptyRotationEntry() {
+  const categories = {};
+  CATEGORY_ORDER.forEach(cat => { categories[cat] = { attempts: 0, points: 0, errors: 0 }; });
+  return { attempts: 0, points: 0, errors: 0, categories };
+}
+
+function dvGetSection(content, name) {
+  const marker = '[' + name + ']';
+  let start = content.indexOf(marker);
+  if (start === -1) return '';
+  const lineEnd = content.indexOf('\n', start);
+  start = (lineEnd === -1) ? content.length : lineEnd + 1;
+  let end = content.indexOf('[3', start);
+  if (end === -1) end = content.length;
+  return content.slice(start, end);
+}
+
+function dvGetOwnTeamMarker(content, ownTeamCode) {
+  const section = dvGetSection(content, '3TEAMS');
+  const lines = section.split('\n').filter(l => l.trim());
+  const codes = lines.map(l => l.split(';')[0]);
+  return codes[0] === ownTeamCode ? '*' : 'a';
+}
+
+function dvGetBackAttackCombos(content) {
+  const section = dvGetSection(content, '3ATTACKCOMBINATION');
+  const backCombos = new Set();
+  section.split('\n').forEach(line => {
+    if (!line.trim()) return;
+    const fields = line.split(';');
+    const code = fields[0];
+    const zone = fields.length > 1 ? fields[1] : '';
+    if (zone === '7' || zone === '8' || zone === '9') backCombos.add(code);
+  });
+  return backCombos;
+}
+
+function dvGetComboCategories(content) {
+  const section = dvGetSection(content, '3ATTACKCOMBINATION');
+  const mapping = {};
+  section.split('\n').forEach(line => {
+    if (!line.trim()) return;
+    const fields = line.split(';');
+    const code = fields[0];
+    const categoryLetter = fields.length > 8 ? fields[8] : '';
+    mapping[code] = COMBO_CATEGORY_MAP[categoryLetter] || 'other';
+  });
+  return mapping;
+}
+
+function dvGetMatchDate(content) {
+  const section = dvGetSection(content, '3MATCH');
+  const firstLine = section.split('\n')[0];
+  return firstLine.split(';')[0];
+}
+
+function dvDateSlug(matchDate) {
+  const parts = matchDate.split('/');
+  if (parts.length === 3) {
+    const [day, month, year] = parts;
+    return `${year}-${month}-${day}`;
+  }
+  return matchDate.replace(/\//g, '-');
+}
+
+function dvBuildMatchSlug(matchDate, opponent) {
+  return `${dvDateSlug(matchDate)}_${opponent}`;
+}
+
+function dvSplitIntoSets(lines) {
+  const sets = [];
+  let current = [];
+  lines.forEach(line => {
+    if (/^\*\*\dset/.test(line)) {
+      sets.push(current);
+      current = [];
+    } else {
+      current.push(line);
+    }
+  });
+  if (current.length) sets.push(current);
+  return sets;
+}
+
+function dvAnalyzeSet(linesInSet, ownMarker, backAttackCombos) {
+  const stats = {};
+  function getPlayerStats(number) {
+    if (!(number in stats)) stats[number] = dvEmptyPlayerStats();
+    return stats[number];
+  }
+  linesInSet.forEach(line => {
+    const fields = line.split(';');
+    const code = fields[0];
+    const m = DV_ACTION_RE.exec(code);
+    if (!m) return;
+    const team = m[1], playerNum = m[2], skill = m[3], evaluation = m[5], combo = m[6];
+    if (team !== ownMarker) return;
+    const number = parseInt(playerNum, 10);
+    const p = getPlayerStats(number);
+
+    if (skill === 'A') {
+      const isBack = !!(combo && backAttackCombos.has(combo));
+      p.attempts += 1;
+      if (isBack) p.back_attempts += 1;
+      if (evaluation === '#') {
+        p.points += 1;
+        if (isBack) p.back_points += 1;
+      } else if (evaluation === '=') {
+        p.errors += 1;
+        if (isBack) p.back_errors += 1;
+      } else if (evaluation === '/') {
+        p.blocked += 1;
+      }
+    } else if (skill === 'B') {
+      p.block_attempts += 1;
+      if (evaluation === '#') p.block_points += 1;
+      else if (evaluation === '=') p.block_errors += 1;
+      else if (evaluation === '!') p.block_touch_opp += 1;
+      else if (evaluation === '+') p.block_touch_own += 1;
+    } else if (skill === 'S') {
+      p.serve_attempts += 1;
+      if (evaluation === '#') p.serve_aces += 1;
+      else if (evaluation === '=') p.serve_errors += 1;
+    } else if (skill === 'R') {
+      p.receive_attempts += 1;
+      if (evaluation === '#') p.receive_a += 1;
+      else if (evaluation === '+') p.receive_b += 1;
+      else if (evaluation === '=') p.receive_errors += 1;
+      else if (evaluation === '/') p.receive_d += 1;
+      else p.receive_c += 1;
+    }
+  });
+  return stats;
+}
+
+function dvAnalyzeRotationAttacks(linesInSet, ownMarker, comboCategories) {
+  const rotationStats = {};
+  for (let n = 1; n <= 6; n++) rotationStats[n] = dvEmptyRotationEntry();
+  let ownRotationKey = null;
+  let rotationNumber = 1;
+
+  linesInSet.forEach(line => {
+    const fields = line.split(';');
+    const code = fields[0];
+
+    if (fields.length >= 26) {
+      const slice = ownMarker === '*' ? fields.slice(14, 20) : fields.slice(20, 26);
+      const isAllEmpty = slice.every(v => v === '');
+      if (!isAllEmpty) {
+        const key = JSON.stringify(slice);
+        if (ownRotationKey === null) {
+          ownRotationKey = key;
+        } else if (key !== ownRotationKey) {
+          ownRotationKey = key;
+          rotationNumber = (rotationNumber % 6) + 1;
+        }
+      }
+    }
+
+    const m = DV_ACTION_RE.exec(code);
+    if (!m) return;
+    const team = m[1], skill = m[3], evaluation = m[5], combo = m[6];
+    if (team !== ownMarker || skill !== 'A') return;
+
+    const entry = rotationStats[rotationNumber];
+    entry.attempts += 1;
+    if (evaluation === '#') entry.points += 1;
+    else if (evaluation === '=') entry.errors += 1;
+
+    const cat = comboCategories[combo] || 'other';
+    const catEntry = entry.categories[cat];
+    catEntry.attempts += 1;
+    if (evaluation === '#') catEntry.points += 1;
+    else if (evaluation === '=') catEntry.errors += 1;
+  });
+
+  return rotationStats;
+}
+
+function dvMergeRotationStats(allSetRotationStats) {
+  const total = {};
+  for (let n = 1; n <= 6; n++) total[n] = dvEmptyRotationEntry();
+  allSetRotationStats.forEach(setStats => {
+    for (let n = 1; n <= 6; n++) {
+      ['attempts', 'points', 'errors'].forEach(k => { total[n][k] += setStats[n][k]; });
+      CATEGORY_ORDER.forEach(cat => {
+        ['attempts', 'points', 'errors'].forEach(k => {
+          total[n].categories[cat][k] += setStats[n].categories[cat][k];
+        });
+      });
+    }
+  });
+  return total;
+}
+
+function dvRotationSummary(rotationStats) {
+  const rows = [];
+  const grand = dvEmptyRotationEntry();
+  for (let n = 1; n <= 6; n++) {
+    const e = rotationStats[n];
+    const row = {
+      rotation: n,
+      attempts: e.attempts, points: e.points, errors: e.errors,
+      kill_rate: dvRate(e.points, e.attempts),
+      categories: {},
+    };
+    CATEGORY_ORDER.forEach(cat => {
+      row.categories[cat] = {
+        attempts: e.categories[cat].attempts,
+        points: e.categories[cat].points,
+        errors: e.categories[cat].errors,
+        kill_rate: dvRate(e.categories[cat].points, e.categories[cat].attempts),
+      };
+    });
+    rows.push(row);
+    grand.attempts += e.attempts; grand.points += e.points; grand.errors += e.errors;
+    CATEGORY_ORDER.forEach(cat => {
+      ['attempts', 'points', 'errors'].forEach(k => { grand.categories[cat][k] += e.categories[cat][k]; });
+    });
+  }
+  const totalRow = {
+    rotation: '合計',
+    attempts: grand.attempts, points: grand.points, errors: grand.errors,
+    kill_rate: dvRate(grand.points, grand.attempts),
+    categories: {},
+  };
+  CATEGORY_ORDER.forEach(cat => {
+    totalRow.categories[cat] = {
+      attempts: grand.categories[cat].attempts,
+      points: grand.categories[cat].points,
+      errors: grand.categories[cat].errors,
+      kill_rate: dvRate(grand.categories[cat].points, grand.categories[cat].attempts),
+    };
+  });
+  rows.push(totalRow);
+  return rows;
+}
+
+function dvAnalyzeSideOutBreak(linesInSet, ownMarker) {
+  const result = { serve_total: 0, serve_wins: 0, receive_total: 0, receive_wins: 0 };
+  let currentServer = null;
+  linesInSet.forEach(line => {
+    const code = line.split(';')[0];
+    const mAction = DV_ACTION_RE.exec(code);
+    if (mAction && mAction[3] === 'S') currentServer = mAction[1];
+    const mScore = DV_SCORE_RE.exec(code);
+    if (mScore && currentServer !== null) {
+      const scorer = mScore[1];
+      if (currentServer === ownMarker) {
+        result.serve_total += 1;
+        if (scorer === ownMarker) result.serve_wins += 1;
+      } else {
+        result.receive_total += 1;
+        if (scorer === ownMarker) result.receive_wins += 1;
+      }
+    }
+  });
+  return result;
+}
+
+function dvMergeSideOutBreak(allSetResults) {
+  const total = { serve_total: 0, serve_wins: 0, receive_total: 0, receive_wins: 0 };
+  allSetResults.forEach(r => {
+    Object.keys(total).forEach(k => { total[k] += r[k]; });
+  });
+  return total;
+}
+
+function dvSideOutBreakSummary(r) {
+  return {
+    serve_total: r.serve_total,
+    serve_wins: r.serve_wins,
+    break_rate: dvRate(r.serve_wins, r.serve_total),
+    receive_total: r.receive_total,
+    receive_wins: r.receive_wins,
+    side_out_rate: dvRate(r.receive_wins, r.receive_total),
+  };
+}
+
+function dvAnalyzeScoreProgression(linesInSet, ownMarker) {
+  const points = [{ own: 0, opponent: 0 }];
+  linesInSet.forEach(line => {
+    const code = line.split(';')[0];
+    const m = DV_SCORE_RE.exec(code);
+    if (!m) return;
+    const homeScore = parseInt(m[2], 10);
+    const awayScore = parseInt(m[3], 10);
+    const own = ownMarker === '*' ? homeScore : awayScore;
+    const opponent = ownMarker === '*' ? awayScore : homeScore;
+    points.push({ own, opponent });
+  });
+  return points;
+}
+
+function dvMergeStats(allSetStats) {
+  const total = {};
+  allSetStats.forEach(setStats => {
+    Object.keys(setStats).forEach(number => {
+      if (!(number in total)) total[number] = dvEmptyPlayerStats();
+      const s = setStats[number];
+      Object.keys(s).forEach(key => { total[number][key] += s[key]; });
+    });
+  });
+  return total;
+}
+
+function dvPlayerSummary(number, s, roster, name) {
+  const attempts = s.attempts, points = s.points, errors = s.errors, blocked = s.blocked;
+  return {
+    number: number,
+    name: name !== undefined ? name : ((roster && roster[number]) || ('#' + number)),
+    attempts, points, errors, blocked,
+    kill_rate: dvRate(points, attempts),
+    efficiency: dvRate(points - errors - blocked, attempts),
+    back_attempts: s.back_attempts, back_points: s.back_points, back_errors: s.back_errors,
+    block_attempts: s.block_attempts, block_points: s.block_points, block_errors: s.block_errors,
+    block_touch_own: s.block_touch_own, block_touch_opp: s.block_touch_opp,
+    serve_attempts: s.serve_attempts, serve_aces: s.serve_aces, serve_errors: s.serve_errors,
+    serve_ace_rate: dvRate(s.serve_aces, s.serve_attempts),
+    serve_error_rate: dvRate(s.serve_errors, s.serve_attempts),
+    serve_efficiency: dvRate(s.serve_aces - s.serve_errors, s.serve_attempts),
+    receive_attempts: s.receive_attempts, receive_a: s.receive_a, receive_b: s.receive_b,
+    receive_c: s.receive_c, receive_d: s.receive_d, receive_errors: s.receive_errors,
+    receive_return_rate: dvRate(s.receive_attempts - s.receive_errors, s.receive_attempts),
+    receive_a_rate: dvRate(s.receive_a, s.receive_attempts),
+  };
+}
+
+function dvTeamStats(statsDict) {
+  const total = dvEmptyPlayerStats();
+  Object.values(statsDict).forEach(s => {
+    Object.keys(total).forEach(key => { total[key] += s[key]; });
+  });
+  return total;
+}
+
+// content: .dvwファイルの中身(文字列)。opponentName: 対戦相手の名前(手入力)。
+// ownTeamCode: '3TEAMS'セクションで自チームを表すコード('TSJ'や'TSD')。
+// teamLabel: 表示用のチーム名。roster: {背番号: 名前} の対応表。
+function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, roster) {
+  const ownMarker = dvGetOwnTeamMarker(content, ownTeamCode);
+  const backAttackCombos = dvGetBackAttackCombos(content);
+  const comboCategories = dvGetComboCategories(content);
+  const matchDate = dvGetMatchDate(content);
+
+  const scoutSection = dvGetSection(content, '3SCOUT');
+  const allLines = scoutSection.split('\n').filter(l => l.trim());
+  const setsLines = dvSplitIntoSets(allLines);
+
+  const allSetStats = setsLines.map(s => dvAnalyzeSet(s, ownMarker, backAttackCombos));
+  const totalStats = dvMergeStats(allSetStats);
+  const allRotationStats = setsLines.map(s => dvAnalyzeRotationAttacks(s, ownMarker, comboCategories));
+  const allSideOutBreak = setsLines.map(s => dvAnalyzeSideOutBreak(s, ownMarker));
+  const allScoreProgression = setsLines.map(s => dvAnalyzeScoreProgression(s, ownMarker));
+
+  const numbers = Object.keys(totalStats).map(Number).sort((a, b) => a - b);
+
+  return {
+    matchDate: matchDate,
+    opponent: opponentName,
+    teamLabel: teamLabel,
+    sets: allSetStats.map((setStats, i) => ({
+      setNumber: i + 1,
+      players: Object.keys(setStats).map(Number).sort((a, b) => a - b)
+        .map(n => dvPlayerSummary(n, setStats[n], roster)),
+    })),
+    total: numbers.map(n => dvPlayerSummary(n, totalStats[n], roster)),
+    team: {
+      name: 'チーム全体',
+      total: dvPlayerSummary(null, dvTeamStats(totalStats), roster, 'チーム全体'),
+      sets: allSetStats.map((setStats, i) => ({
+        setNumber: i + 1,
+        ...dvPlayerSummary(null, dvTeamStats(setStats), roster, 'チーム全体'),
+      })),
+    },
+    rotation: {
+      bySet: allRotationStats.map((rs, i) => ({ setNumber: i + 1, rows: dvRotationSummary(rs) })),
+      total: { rows: dvRotationSummary(dvMergeRotationStats(allRotationStats)) },
+    },
+    sideOutBreak: {
+      bySet: allSideOutBreak.map((r, i) => ({ setNumber: i + 1, ...dvSideOutBreakSummary(r) })),
+      total: dvSideOutBreakSummary(dvMergeSideOutBreak(allSideOutBreak)),
+    },
+    scoreProgression: {
+      bySet: allScoreProgression.map((points, i) => ({ setNumber: i + 1, points })),
+    },
+  };
+}
+
+
+// ==================== ここから：チームごとの設定 + ドラッグ&ドロップUI ====================
+const OWN_TEAM_CODE = 'TSJ';
+const ROSTER = {"1": "本村 嘉菜", "2": "北川 茉奈", "3": "島崎 葵", "4": "萩谷 歩未", "5": "坂本 朱乃", "6": "大石 麻美", "7": "菊田 美優", "8": "早野 有美", "9": "佐藤 まひろ", "10": "関口 希望", "11": "安藤 美果", "12": "小林 琉夏"};
+
+let MATCHES = [];
+
+function dvDownloadJson(obj, filename) {
+  const blob = new Blob([JSON.stringify(obj)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function dvUpdateManifestList(matches, matchDate, opponent, dataFile) {
+  const filtered = matches.filter(m => !(m.matchDate === matchDate && m.opponent === opponent));
+  filtered.push({ matchDate, opponent, dataFile });
+  filtered.sort((a, b) => dvDateSlug(b.matchDate) < dvDateSlug(a.matchDate) ? -1 : 1);
+  return filtered;
+}
+
+function handleDvwFile(file) {
+  const statusEl = document.getElementById('dropZoneStatus');
+  statusEl.innerHTML = '<p class="hint">読み込み中…</p>';
+  const reader = new FileReader();
+  reader.onload = () => {
+    const content = reader.result;
+    let opponent = window.prompt('対戦相手のチーム名を入力してください（.dvwファイルの中では読み取れないため）');
+    if (!opponent) {
+      statusEl.innerHTML = '<p class="hint">対戦相手の名前が入力されなかったので、中止しました。</p>';
+      return;
+    }
+    opponent = opponent.trim();
+    let data;
+    try {
+      data = dvBuildDashboardData(content, opponent, OWN_TEAM_CODE, document.getElementById('teamTitle').textContent, ROSTER);
+    } catch (e) {
+      statusEl.innerHTML = '<p class="hint">読み込みに失敗しました。.dvwファイルの中身を確認してください。（' + escapeHtml(String(e)) + '）</p>';
+      return;
+    }
+
+    // その場ですぐ表示する
+    DATA = data;
+    document.getElementById('mainArea').style.display = 'block';
+    document.getElementById('matchTitle').textContent =
+      `${DATA.teamLabel} 対 ${DATA.opponent}（${DATA.matchDate}）`;
+    document.getElementById('detailCard').style.display = 'none';
+    document.getElementById('detailCard2').style.display = 'none';
+    document.querySelectorAll('.match-chip').forEach(c => c.classList.remove('selected'));
+    renderTeamGrid();
+    renderPlayerGrid(DATA.total);
+    showRotationTables();
+    showSideOutBreakTable();
+    showScoreProgressionCharts();
+    showPage(1);
+
+    // GitHubに保存するためのダウンロードを用意する
+    const slug = dvBuildMatchSlug(DATA.matchDate, DATA.opponent);
+    const dataFile = slug + '.json';
+    const updatedMatches = dvUpdateManifestList(MATCHES, DATA.matchDate, DATA.opponent, dataFile);
+
+    statusEl.innerHTML =
+      '<p class="hint">スタッツを表示しました。他のパソコン・スマホでも見られるようにするには、'
+      + '下の2つのファイルをダウンロードして、GitHubにアップロードしてください（前と同じ手順です）。</p>'
+      + '<button class="dl-btn" id="dlMatchBtn">① ' + escapeHtml(dataFile) + ' をダウンロード</button>'
+      + '<button class="dl-btn" id="dlManifestBtn">② matches.json をダウンロード</button>';
+    document.getElementById('dlMatchBtn').addEventListener('click', () => dvDownloadJson(DATA, dataFile));
+    document.getElementById('dlManifestBtn').addEventListener('click', () => dvDownloadJson(updatedMatches, 'matches.json'));
+  };
+  reader.onerror = () => {
+    statusEl.innerHTML = '<p class="hint">ファイルの読み込みに失敗しました。</p>';
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+function setupDropZone() {
+  const zone = document.getElementById('dropZone');
+  const input = document.getElementById('dvwFileInput');
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => {
+    if (input.files && input.files[0]) handleDvwFile(input.files[0]);
+    input.value = '';
+  });
+  ['dragenter', 'dragover'].forEach(evt => {
+    zone.addEventListener(evt, e => {
+      e.preventDefault();
+      zone.classList.add('drag-over');
+    });
+  });
+  ['dragleave', 'drop'].forEach(evt => {
+    zone.addEventListener(evt, e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+    });
+  });
+  zone.addEventListener('drop', e => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleDvwFile(file);
+  });
+}
+// ==================== ここまで：チームごとの設定 + ドラッグ&ドロップUI ====================
+
+
 let DATA = null;
 
 function pct(v) {
@@ -332,9 +882,6 @@ function selectPlayer(number, chipEl) {
   });
   showDetail(p.name, `#${p.number} ／ 全セット合計`, p, setRows);
 }
-
-const CATEGORY_ORDER = ['left', 'right', 'middle', 'pipe', 'other'];
-const CATEGORY_LABELS = { left: 'レフト', right: 'ライト', middle: 'ミドル', pipe: 'パイプ', other: 'その他' };
 
 function rotationTableHtml(rows, title) {
   let html = `<h4 style="margin:18px 0 8px;font-size:13px;color:var(--text-muted)">${title}</h4>`;
@@ -526,11 +1073,13 @@ function loadMatch(entry, chipEl) {
 }
 
 document.getElementById('teamTitle').textContent = '東京スリジエ（女子）';
+setupDropZone();
 
 fetch('matches.json')
   .then(res => res.ok ? res.json() : [])
   .catch(() => [])
   .then(matches => {
+    MATCHES = matches || [];
     if (!matches || !matches.length) {
       document.getElementById('noMatchesHint').style.display = 'block';
       return;
