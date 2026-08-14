@@ -110,6 +110,7 @@
   .match-bar .label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
 
   .drop-zone-card { margin-bottom: 18px; }
+  #dropZoneContent { margin-top: 8px; }
   .drop-zone {
     border: 2px dashed var(--baseline); border-radius: 10px; padding: 20px;
     text-align: center; cursor: pointer; color: var(--text-muted); font-size: 13px;
@@ -135,6 +136,18 @@
     text-align: left; background: var(--grid); font-weight: 600; font-size: 13px;
     color: var(--text-secondary);
   }
+
+  .accordion-section { margin-top: 14px; }
+  .accordion-section:first-child { margin-top: 0; }
+  .accordion-toggle {
+    width: 100%; font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+    padding: 13px 16px; border-radius: 10px; text-align: left;
+    border: 1px solid var(--border); background: var(--page-plane); color: var(--text-primary);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .accordion-toggle:hover { background: var(--grid); }
+  .accordion-toggle .arrow { color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
+  .accordion-body { padding: 16px 2px 4px; }
 
   .page { display: none; }
   .page.active { display: block; }
@@ -191,12 +204,17 @@
   </button>
   <div class="sidebar" id="sidebar">
     <div class="card drop-zone-card">
-      <div class="sidebar-label">.dvwファイルを追加</div>
-      <div id="dropZone" class="drop-zone">
-        .dvwファイルをここにドラッグ&ドロップ<br>（またはクリックしてファイルを選ぶ）<br>その場ですぐスタッツが見られます
+      <button type="button" class="player-toggle-btn" id="dropZoneToggleBtn" style="margin-top:0">
+        <span>.dvwファイルを追加</span>
+        <span class="arrow" id="dropZoneToggleArrow">▾</span>
+      </button>
+      <div id="dropZoneContent" style="display:none">
+        <div id="dropZone" class="drop-zone">
+          .dvwファイルをここにドラッグ&ドロップ<br>（またはクリックしてファイルを選ぶ）<br>その場ですぐスタッツが見られます
+        </div>
+        <input type="file" id="dvwFileInput" accept=".dvw" style="display:none">
+        <div class="drop-zone-status" id="dropZoneStatus"></div>
       </div>
-      <input type="file" id="dvwFileInput" accept=".dvw" style="display:none">
-      <div class="drop-zone-status" id="dropZoneStatus"></div>
     </div>
 
     <div class="card">
@@ -803,6 +821,17 @@ function handleDvwFile(file) {
     statusEl.innerHTML = '<p class="hint">ファイルの読み込みに失敗しました。</p>';
   };
   reader.readAsText(file, 'utf-8');
+}
+
+function setupDropZoneToggle() {
+  const btn = document.getElementById('dropZoneToggleBtn');
+  const content = document.getElementById('dropZoneContent');
+  const arrow = document.getElementById('dropZoneToggleArrow');
+  btn.addEventListener('click', () => {
+    const isOpen = content.style.display !== 'none';
+    content.style.display = isOpen ? 'none' : 'block';
+    arrow.textContent = isOpen ? '▾' : '▴';
+  });
 }
 
 function setupDropZone() {
@@ -1655,35 +1684,58 @@ function combinedSideOutBreakHtml(s) {
   return html;
 }
 
+let matchComparisonOpenSections = new Set();
+
+function toggleAccordionSection(id) {
+  if (matchComparisonOpenSections.has(id)) {
+    matchComparisonOpenSections.delete(id);
+  } else {
+    matchComparisonOpenSections.add(id);
+  }
+  refreshMatchComparisonIfNeeded();
+}
+
+function accordionSectionHtml(id, title, bodyHtml) {
+  const isOpen = matchComparisonOpenSections.has(id);
+  return `
+    <div class="accordion-section">
+      <button type="button" class="accordion-toggle" onclick="toggleAccordionSection('${id}')">
+        <span>${escapeHtml(title)}</span><span class="arrow">${isOpen ? '▴' : '▾'}</span>
+      </button>
+      <div class="accordion-body" style="display:${isOpen ? 'block' : 'none'}">${bodyHtml}</div>
+    </div>`;
+}
+
 function showMatchComparison(matches) {
   document.getElementById('matchComparisonCard').style.display = 'block';
   document.getElementById('matchComparisonTitle').textContent = `試合比較（${matches.length}試合）`;
 
-  let html = '<h3 class="section-label" style="margin-top:0">試合ごとの比較（チーム全体）</h3>';
-  html += matchComparisonTableHtml(matches);
+  let html = accordionSectionHtml('team-compare', '試合ごとの比較（チーム全体）', matchComparisonTableHtml(matches));
 
   const combinedTeam = combineStatsList(matches.map(m => m.team.total));
   const combinedSOB = combineSideOutBreak(matches.map(m => m.sideOutBreak.total));
-  html += `<h3 class="section-label">合算スタッツ（選んだ${matches.length}試合をすべて合計・チーム全体）</h3>`;
-  if (combinedTeam) html += combinedTableHtml(combinedTeam);
-  html += combinedSideOutBreakHtml(combinedSOB);
+  let combinedHtml = '';
+  if (combinedTeam) combinedHtml += combinedTableHtml(combinedTeam);
+  combinedHtml += combinedSideOutBreakHtml(combinedSOB);
+  html += accordionSectionHtml('team-combined', `合算スタッツ（選んだ${matches.length}試合をすべて合計・チーム全体）`, combinedHtml);
 
   Array.from(selectedPlayerNumbers).forEach(number => {
     const name = ROSTER[number] || `#${number}`;
-    html += `<div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border)">`;
-    html += `<h3 class="section-label" style="margin-top:0">${escapeHtml(name)}（#${number}） 試合ごとの比較</h3>`;
-    html += playerAcrossMatchesTableHtml(number, matches);
+    let playerHtml = '<h4 class="section-label" style="margin-top:0;font-size:15px">試合ごとの比較</h4>';
+    playerHtml += playerAcrossMatchesTableHtml(number, matches);
     const playerStatsList = matches.map(m => (m.total || []).find(pp => pp.number === number) || null);
     const combinedPlayer = combineStatsList(playerStatsList);
-    html += `<h3 class="section-label">${escapeHtml(name)}（#${number}） 合算スタッツ（選んだ${matches.length}試合をすべて合計）</h3>`;
-    html += combinedPlayer ? combinedTableHtml(combinedPlayer) : '<p class="hint">選んだ試合に出場記録がありません</p>';
-    html += '</div>';
+    playerHtml += `<h4 class="section-label" style="font-size:15px">合算スタッツ（選んだ${matches.length}試合をすべて合計）</h4>`;
+    playerHtml += combinedPlayer ? combinedTableHtml(combinedPlayer) : '<p class="hint">選んだ試合に出場記録がありません</p>';
+    html += accordionSectionHtml(`player-${number}`, `${name}（#${number}）`, playerHtml);
   });
+
   document.getElementById('matchComparisonBody').innerHTML = html;
 }
 
 document.getElementById('teamTitle').textContent = '東京スリジエ（女子）';
 setupDropZone();
+setupDropZoneToggle();
 setupPlayerListToggle();
 setupSidebarToggle();
 setupMatchListToggle();
