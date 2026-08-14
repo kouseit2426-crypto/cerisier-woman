@@ -46,17 +46,16 @@
   header h1 { font-size: 30px; margin: 0 0 4px; }
   header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
 
-  .header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   .sidebar-toggle-btn {
     font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-    padding: 9px 16px; border-radius: 10px; white-space: nowrap;
+    padding: 9px 16px; border-radius: 10px; white-space: nowrap; width: 100%;
     border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
-    display: flex; align-items: center; gap: 6px;
+    display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 14px;
   }
   .sidebar-toggle-btn:hover { background: var(--grid); }
 
   .app-layout { display: flex; align-items: flex-start; gap: 24px; }
-  .sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 20px; }
+  .sidebar-column { width: 300px; flex-shrink: 0; position: sticky; top: 20px; }
   .sidebar.collapsed { display: none; }
   .sidebar .card { margin-bottom: 18px; }
   .sidebar .card:last-child { margin-bottom: 0; }
@@ -64,7 +63,7 @@
   .main-content { flex: 1; min-width: 0; }
   @media (max-width: 860px) {
     .app-layout { flex-direction: column; }
-    .sidebar { width: 100%; position: static; }
+    .sidebar-column { width: 100%; position: static; }
   }
 
   .player-toggle-btn {
@@ -180,17 +179,16 @@
 <body>
 <div class="viz-root">
 <div class="wrap">
-  <header class="header-row">
-    <div>
-      <h1 id="teamTitle"></h1>
-      <p>試合を選ぶと、その試合のスタッツが表示されます</p>
-    </div>
-    <button type="button" id="sidebarToggleBtn" class="sidebar-toggle-btn">
-      <span id="sidebarToggleIcon">☰</span><span id="sidebarToggleLabel">メニューを閉じる</span>
-    </button>
+  <header>
+    <h1 id="teamTitle"></h1>
+    <p>試合を選ぶと、その試合のスタッツが表示されます</p>
   </header>
 
   <div class="app-layout">
+  <div class="sidebar-column">
+  <button type="button" id="sidebarToggleBtn" class="sidebar-toggle-btn">
+    <span id="sidebarToggleIcon">☰</span><span id="sidebarToggleLabel">メニューを閉じる</span>
+  </button>
   <div class="sidebar" id="sidebar">
     <div class="card drop-zone-card">
       <div class="sidebar-label">.dvwファイルを追加</div>
@@ -204,7 +202,7 @@
     <div class="card">
       <div class="sidebar-label">試合を選択</div>
       <button type="button" class="player-toggle-btn" id="matchListToggleBtn" style="margin-top:0">
-        <span id="matchListToggleLabel">試合一覧を表示</span>
+        <span id="matchListToggleLabel">試合</span>
         <span class="arrow" id="matchListToggleArrow">▾</span>
       </button>
       <div class="player-checklist" id="matchChecklist" style="display:none"></div>
@@ -216,11 +214,12 @@
       <div class="sidebar-label">選手を選択</div>
       <div class="player-grid" id="teamGrid"></div>
       <button type="button" class="player-toggle-btn" id="playerListToggleBtn">
-        <span id="playerListToggleLabel">選手一覧を表示</span>
+        <span id="playerListToggleLabel">選手</span>
         <span class="arrow" id="playerListToggleArrow">▾</span>
       </button>
       <div class="player-checklist" id="playerChecklist" style="display:none"></div>
     </div>
+  </div>
   </div>
 
   <div class="main-content">
@@ -847,18 +846,19 @@ function renderTeamGrid() {
   grid.appendChild(chip);
 }
 
-function renderPlayerGrid(players) {
+function renderPlayerGrid() {
   const list = document.getElementById('playerChecklist');
   list.innerHTML = '';
-  players.slice().sort((a, b) => a.number - b.number).forEach(p => {
+  const numbers = Object.keys(ROSTER).map(Number).sort((a, b) => a - b);
+  numbers.forEach(number => {
     const label = document.createElement('label');
     label.className = 'player-check-item';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.checked = selectedPlayerNumbers.has(p.number);
-    cb.addEventListener('change', () => togglePlayerCheckbox(p.number, cb));
+    cb.checked = selectedPlayerNumbers.has(number);
+    cb.addEventListener('change', () => togglePlayerCheckbox(number, cb));
     const span = document.createElement('span');
-    span.textContent = p.name;
+    span.textContent = ROSTER[number];
     label.appendChild(cb);
     label.appendChild(span);
     list.appendChild(label);
@@ -869,7 +869,7 @@ function renderPlayerGrid(players) {
 function updatePlayerListToggleLabel() {
   const n = selectedPlayerNumbers.size;
   document.getElementById('playerListToggleLabel').textContent =
-    n > 0 ? `選手一覧（${n}人選択中）` : '選手一覧を表示';
+    n > 0 ? `選手（${n}人選択中）` : '選手';
 }
 
 function togglePlayerCheckbox(number, cbEl) {
@@ -996,6 +996,15 @@ function showDetail(name, subLabel, totalStats, setRows) {
 let selectedPlayerNumbers = new Set();
 
 function renderPlayerSelection() {
+  if (selectedMatchKeys.size >= 2) {
+    // 試合を複数選んでいる場合は、試合比較の中に選手の内訳を差し込む
+    const entries = Array.from(selectedMatchKeys)
+      .map(k => MATCHES.find(m => matchKey(m) === k))
+      .filter(Boolean);
+    Promise.all(entries.map(fetchMatchData)).then(dataList => showMatchComparison(dataList));
+    return;
+  }
+
   const nums = Array.from(selectedPlayerNumbers);
   if (nums.length === 0) {
     document.getElementById('detailCard').style.display = 'none';
@@ -1003,10 +1012,20 @@ function renderPlayerSelection() {
     document.getElementById('comparisonCard').style.display = 'none';
   } else if (nums.length === 1) {
     document.getElementById('comparisonCard').style.display = 'none';
-    const p = DATA.total.find(pp => pp.number === nums[0]);
-    if (!p) return;
+    const number = nums[0];
+    const p = DATA.total.find(pp => pp.number === number);
+    if (!p) {
+      document.getElementById('detailCard').style.display = 'block';
+      document.getElementById('detailCard2').style.display = 'none';
+      document.getElementById('detailName').textContent = ROSTER[number] || `#${number}`;
+      document.getElementById('detailNumber').textContent = `#${number} ／ この試合の出場記録がありません`;
+      document.getElementById('detailTiles').innerHTML = '';
+      document.getElementById('detailSetBody').innerHTML =
+        '<tr><td colspan="6" class="hint">出場記録がありません</td></tr>';
+      return;
+    }
     const setRows = DATA.sets.map(s => {
-      const sp = s.players.find(pp => pp.number === nums[0]);
+      const sp = s.players.find(pp => pp.number === number);
       return sp ? { ...sp, setNumber: s.setNumber } : null;
     });
     showDetail(p.name, `#${p.number} ／ 全セット合計`, p, setRows);
@@ -1238,6 +1257,10 @@ function selectTeam(chipEl) {
   updatePlayerListToggleLabel();
   markSelected(chipEl);
   document.getElementById('comparisonCard').style.display = 'none';
+  if (selectedMatchKeys.size >= 2) {
+    renderPlayerSelection();
+    return;
+  }
   showDetail(DATA.team.name, 'チーム合計 ／ 全セット合計', DATA.team.total, DATA.team.sets);
 }
 
@@ -1292,7 +1315,7 @@ function fetchMatchData(entry) {
 function updateMatchListToggleLabel() {
   const n = selectedMatchKeys.size;
   document.getElementById('matchListToggleLabel').textContent =
-    n > 0 ? `試合一覧（${n}試合選択中）` : '試合一覧を表示';
+    n > 0 ? `試合（${n}試合選択中）` : '試合';
   document.getElementById('matchComparisonHint').style.display = n >= 2 ? 'none' : '';
 }
 
@@ -1356,7 +1379,9 @@ function renderMatchSelection() {
   }
 
   document.getElementById('mainArea').style.display = 'none';
-  document.getElementById('playerSelectCard').style.display = 'none';
+  document.getElementById('playerSelectCard').style.display = 'block';
+  renderTeamGrid();
+  renderPlayerGrid();
   Promise.all(entries.map(fetchMatchData)).then(dataList => showMatchComparison(dataList));
 }
 
@@ -1371,7 +1396,7 @@ function showSingleMatch(data) {
   document.getElementById('comparisonCard').style.display = 'none';
   selectedPlayerNumbers.clear();
   renderTeamGrid();
-  renderPlayerGrid(DATA.total);
+  renderPlayerGrid();
   showRotationTables();
   showSideOutBreakTable();
   showScoreProgressionCharts();
@@ -1452,10 +1477,73 @@ function matchComparisonTableHtml(matches) {
   return html;
 }
 
+function playerAcrossMatchesTableHtml(number, matches) {
+  const name = ROSTER[number] || `#${number}`;
+  const colspan = matches.length + 1;
+  const statsList = matches.map(m => (m.total || []).find(pp => pp.number === number) || null);
+
+  function row(label, getter, isPct) {
+    let html = `<tr><td>${escapeHtml(label)}</td>`;
+    statsList.forEach(p => {
+      if (!p) { html += '<td class="hint">出場なし</td>'; return; }
+      const v = getter(p);
+      html += `<td>${isPct ? pct(v) : v}</td>`;
+    });
+    html += '</tr>';
+    return html;
+  }
+
+  const hasBlock = statsList.some(p => p && p.block_attempts > 0);
+  const hasServe = statsList.some(p => p && p.serve_attempts > 0);
+  const hasReceive = statsList.some(p => p && p.receive_attempts > 0);
+
+  let html = `<h3 class="section-label">${escapeHtml(name)}（#${number}）</h3>`;
+  html += '<div style="overflow-x:auto"><table class="rotation-table comparison-table">';
+  html += '<thead><tr><th>項目</th>';
+  matches.forEach(m => {
+    html += `<th>${escapeHtml(m.opponent)}<br><span style="font-weight:400;font-size:12px">${escapeHtml(m.matchDate)}</span></th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  html += matchComparisonSectionHtml('アタック（全セット合計）', colspan);
+  html += row('打数', p => p.attempts, false);
+  html += row('得点', p => p.points, false);
+  html += row('ミス', p => p.errors, false);
+  html += row('決定率', p => p.kill_rate, true);
+  html += row('効果率', p => p.efficiency, true);
+
+  if (hasBlock) {
+    html += matchComparisonSectionHtml('ブロック（全セット合計）', colspan);
+    html += row('本数', p => p.block_attempts, false);
+    html += row('得点', p => p.block_points, false);
+    html += row('失点', p => p.block_errors, false);
+  }
+  if (hasServe) {
+    html += matchComparisonSectionHtml('サーブ（全セット合計）', colspan);
+    html += row('打数', p => p.serve_attempts, false);
+    html += row('エース', p => p.serve_aces, false);
+    html += row('ミス', p => p.serve_errors, false);
+    html += row('エース率', p => p.serve_ace_rate, true);
+  }
+  if (hasReceive) {
+    html += matchComparisonSectionHtml('レシーブ（全セット合計）', colspan);
+    html += row('本数', p => p.receive_attempts, false);
+    html += row('返球率', p => p.receive_return_rate, true);
+    html += row('A率', p => p.receive_a_rate, true);
+  }
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
 function showMatchComparison(matches) {
   document.getElementById('matchComparisonCard').style.display = 'block';
   document.getElementById('matchComparisonTitle').textContent = `試合比較（${matches.length}試合）`;
-  document.getElementById('matchComparisonBody').innerHTML = matchComparisonTableHtml(matches);
+  let html = matchComparisonTableHtml(matches);
+  Array.from(selectedPlayerNumbers).forEach(number => {
+    html += `<div style="margin-top:24px">${playerAcrossMatchesTableHtml(number, matches)}</div>`;
+  });
+  document.getElementById('matchComparisonBody').innerHTML = html;
 }
 
 document.getElementById('teamTitle').textContent = '東京スリジエ（女子）';
