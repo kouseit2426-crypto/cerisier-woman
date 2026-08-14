@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>スリジエ スタッツレポート</title>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-blue:    #2a78d6;
+    --series-orange:  #eb6834;
+  }
+  @media (prefers-color-scheme: dark) {
+    .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-blue:    #3987e5;
+      --series-orange:  #d95926;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 30px; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 16px; color: var(--text-primary); }
+
+  .player-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .player-chip {
+    font-family: inherit; font-size: 13.5px; cursor: pointer;
+    padding: 8px 16px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  .player-chip:hover { background: var(--grid); }
+  .player-chip.selected { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
+  .player-chip.team-chip { font-weight: 600; border-color: var(--series-orange); color: var(--series-orange); }
+  .player-chip.team-chip.selected { background: var(--series-orange); border-color: var(--series-orange); color: #fff; }
+
+  .match-bar { margin-bottom: 18px; }
+  .match-bar .label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
+  .match-chip.selected { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
+
+  #detailCard, #detailCard2, #mainArea { display: none; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .tab-nav { display: flex; gap: 8px; margin-bottom: 20px; }
+  .tab-btn {
+    font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    padding: 10px 20px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-1);
+    color: var(--text-secondary);
+  }
+  .tab-btn:hover { background: var(--grid); }
+  .tab-btn.active { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
+  .detail-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; }
+  .detail-header h2 { margin: 0; font-size: 18px; }
+  .detail-header span { color: var(--text-muted); font-size: 13px; }
+
+  .section-label { font-size: 17px; color: var(--text-primary); margin: 22px 0 10px; font-weight: 600; }
+  .stat-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 640px) { .stat-tiles { grid-template-columns: repeat(2, 1fr); } }
+  .stat-tile { background: var(--page-plane); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .stat-tile .k { font-size: 11.5px; color: var(--text-muted); margin-bottom: 4px; }
+  .stat-tile .v { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; font-variant-numeric: normal; }
+  th { color: var(--text-muted); font-weight: 500; font-size: 12px; }
+  .hint { color: var(--text-muted); font-size: 12px; margin-top: 10px; }
+
+  .score-chart { margin-bottom: 28px; }
+  .score-chart:last-child { margin-bottom: 0; }
+  .score-chart-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; }
+  .score-chart-legend { display: flex; gap: 18px; margin-top: 6px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
+  .legend-swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+  <header>
+    <h1 id="teamTitle"></h1>
+    <p>試合を選ぶと、その試合のスタッツが表示されます</p>
+  </header>
+
+  <div class="match-bar">
+    <div class="label">試合を選択</div>
+    <div class="player-grid" id="matchSelector"></div>
+    <p class="hint" id="noMatchesHint" style="display:none">まだ試合データがありません。</p>
+  </div>
+
+  <div id="mainArea">
+  <h2 id="matchTitle" style="font-size:20px;margin:0 0 16px;color:var(--text-secondary)"></h2>
+
+  <div class="tab-nav">
+    <button class="tab-btn active" id="tabBtn1" onclick="showPage(1)">選手別スタッツ</button>
+    <button class="tab-btn" id="tabBtn2" onclick="showPage(2)">チーム分析</button>
+  </div>
+
+  <div class="page active" id="page1">
+    <div class="card">
+      <h2>選手を選択</h2>
+      <div class="player-grid" id="teamGrid"></div>
+      <div class="player-grid" id="playerGrid" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card" id="detailCard">
+      <div class="detail-header">
+        <h2 id="detailName"></h2>
+        <span id="detailNumber"></span>
+      </div>
+
+      <h3 class="section-label">アタック（全セット合計）</h3>
+      <div class="stat-tiles" id="detailTiles"></div>
+      <table>
+        <thead>
+          <tr><th>セット</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th><th>効果率</th></tr>
+        </thead>
+        <tbody id="detailSetBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="detailCard2">
+      <h3 class="section-label" id="blockSectionLabel" style="margin-top:0">ブロック（全セット合計）</h3>
+      <div class="stat-tiles" id="blockTiles"></div>
+
+      <h3 class="section-label" id="serveSectionLabel">サーブ（全セット合計）</h3>
+      <div class="stat-tiles" id="serveTiles"></div>
+
+      <h3 class="section-label" id="receiveSectionLabel">レシーブ（全セット合計）</h3>
+      <div class="stat-tiles" id="receiveTiles"></div>
+    </div>
+  </div>
+
+  <div class="page" id="page2">
+    <div class="card">
+      <h3 class="section-label" style="margin-top:0">サイドアウト率・ブレイク率（チーム全体）</h3>
+      <p class="hint" style="margin-top:-6px">
+        サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。
+      </p>
+      <table>
+        <thead>
+          <tr><th>セット</th><th>サーブ本数</th><th>ブレイク率</th><th>レシーブ本数</th><th>サイドアウト率</th></tr>
+        </thead>
+        <tbody id="sideOutBreakBody"></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="scoreProgressionCard">
+      <h3 class="section-label" style="margin-top:0">セット経過（得点推移）</h3>
+      <p class="hint" style="margin-top:-6px">
+        ラリーが決まるたびに、その時点のスコアをグラフにしています。セットを選んでください。
+      </p>
+      <div class="player-grid" id="scoreProgressionSetButtons"></div>
+      <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
+    </div>
+
+    <div class="card" id="rotationCard">
+      <h3 class="section-label" style="margin-top:0">ローテーション別 攻撃タイプ分布（チーム全体）</h3>
+      <p class="hint" style="margin-top:-6px">
+        セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。
+        攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。
+      </p>
+      <div id="rotationTables"></div>
+    </div>
+  </div>
+  </div>
+</div>
+</div>
+
+<script>
+let DATA = null;
+
+function pct(v) {
+  if (v === null || v === undefined) return '-';
+  return (v * 100).toFixed(1) + '%';
+}
+
+function renderTeamGrid() {
+  const grid = document.getElementById('teamGrid');
+  grid.innerHTML = '';
+  const chip = document.createElement('button');
+  chip.className = 'player-chip team-chip';
+  chip.textContent = '全体';
+  chip.addEventListener('click', () => selectTeam(chip));
+  grid.appendChild(chip);
+}
+
+function renderPlayerGrid(players) {
+  const grid = document.getElementById('playerGrid');
+  grid.innerHTML = '';
+  players.slice().sort((a, b) => a.number - b.number).forEach(p => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = p.name;
+    chip.addEventListener('click', () => selectPlayer(p.number, chip));
+    grid.appendChild(chip);
+  });
+}
+
+function markSelected(chipEl) {
+  document.querySelectorAll('.player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
+}
+
+function showDetail(name, subLabel, totalStats, setRows) {
+  document.getElementById('detailCard').style.display = 'block';
+  document.getElementById('detailCard2').style.display = 'block';
+  document.getElementById('detailName').textContent = name;
+  document.getElementById('detailNumber').textContent = subLabel;
+
+  document.getElementById('detailTiles').innerHTML = `
+    <div class="stat-tile"><div class="k">打数</div><div class="v">${totalStats.attempts}</div></div>
+    <div class="stat-tile"><div class="k">得点</div><div class="v">${totalStats.points}</div></div>
+    <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.errors}</div></div>
+    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(totalStats.kill_rate)}</div></div>
+    <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.efficiency)}</div></div>
+  `;
+
+  const setBody = document.getElementById('detailSetBody');
+  setBody.innerHTML = '';
+  setRows.forEach(sp => {
+    if (sp && sp.attempts > 0) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>第${sp.setNumber}セット</td><td>${sp.attempts}</td><td>${sp.points}</td><td>${sp.errors}</td><td>${pct(sp.kill_rate)}</td><td>${pct(sp.efficiency)}</td>`;
+      setBody.appendChild(tr);
+    }
+  });
+  if (!setBody.children.length) {
+    setBody.innerHTML = '<tr><td colspan="6" class="hint">出場記録がありません</td></tr>';
+  }
+
+  const blockLabel = document.getElementById('blockSectionLabel');
+  const blockTiles = document.getElementById('blockTiles');
+  if (totalStats.block_attempts > 0) {
+    blockLabel.style.display = '';
+    blockTiles.style.display = '';
+    const touch = totalStats.block_touch_own + totalStats.block_touch_opp;
+    blockTiles.innerHTML = `
+      <div class="stat-tile"><div class="k">本数</div><div class="v">${totalStats.block_attempts}</div></div>
+      <div class="stat-tile"><div class="k">得点</div><div class="v">${totalStats.block_points}</div></div>
+      <div class="stat-tile"><div class="k">ワンチ</div><div class="v">${touch}</div></div>
+      <div class="stat-tile"><div class="k">自コート／相手コート</div><div class="v" style="font-size:16px">${totalStats.block_touch_own} / ${totalStats.block_touch_opp}</div></div>
+      <div class="stat-tile"><div class="k">失点</div><div class="v">${totalStats.block_errors}</div></div>
+    `;
+  } else {
+    blockLabel.style.display = 'none';
+    blockTiles.style.display = 'none';
+  }
+
+  const serveLabel = document.getElementById('serveSectionLabel');
+  const serveTiles = document.getElementById('serveTiles');
+  if (totalStats.serve_attempts > 0) {
+    serveLabel.style.display = '';
+    serveTiles.style.display = '';
+    serveTiles.innerHTML = `
+      <div class="stat-tile"><div class="k">打数</div><div class="v">${totalStats.serve_attempts}</div></div>
+      <div class="stat-tile"><div class="k">エース</div><div class="v">${totalStats.serve_aces}</div></div>
+      <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.serve_errors}</div></div>
+      <div class="stat-tile"><div class="k">エース率</div><div class="v">${pct(totalStats.serve_ace_rate)}</div></div>
+      <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pct(totalStats.serve_error_rate)}</div></div>
+      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.serve_efficiency)}</div></div>
+    `;
+  } else {
+    serveLabel.style.display = 'none';
+    serveTiles.style.display = 'none';
+  }
+
+  const receiveLabel = document.getElementById('receiveSectionLabel');
+  const receiveTiles = document.getElementById('receiveTiles');
+  if (totalStats.receive_attempts > 0) {
+    receiveLabel.style.display = '';
+    receiveTiles.style.display = '';
+    receiveTiles.innerHTML = `
+      <div class="stat-tile"><div class="k">本数</div><div class="v">${totalStats.receive_attempts}</div></div>
+      <div class="stat-tile"><div class="k">Aパス</div><div class="v">${totalStats.receive_a}</div></div>
+      <div class="stat-tile"><div class="k">Bパス</div><div class="v">${totalStats.receive_b}</div></div>
+      <div class="stat-tile"><div class="k">Cパス</div><div class="v">${totalStats.receive_c}</div></div>
+      <div class="stat-tile"><div class="k">Dパス</div><div class="v">${totalStats.receive_d}</div></div>
+      <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.receive_errors}</div></div>
+      <div class="stat-tile"><div class="k">返球率</div><div class="v">${pct(totalStats.receive_return_rate)}</div></div>
+      <div class="stat-tile"><div class="k">A率</div><div class="v">${pct(totalStats.receive_a_rate)}</div></div>
+    `;
+  } else {
+    receiveLabel.style.display = 'none';
+    receiveTiles.style.display = 'none';
+  }
+}
+
+function selectPlayer(number, chipEl) {
+  markSelected(chipEl);
+  const p = DATA.total.find(pp => pp.number === number);
+  if (!p) return;
+  const setRows = DATA.sets.map(s => {
+    const sp = s.players.find(pp => pp.number === number);
+    return sp ? { ...sp, setNumber: s.setNumber } : null;
+  });
+  showDetail(p.name, `#${p.number} ／ 全セット合計`, p, setRows);
+}
+
+const CATEGORY_ORDER = ['left', 'right', 'middle', 'pipe', 'other'];
+const CATEGORY_LABELS = { left: 'レフト', right: 'ライト', middle: 'ミドル', pipe: 'パイプ', other: 'その他' };
+
+function rotationTableHtml(rows, title) {
+  let html = `<h4 style="margin:18px 0 8px;font-size:13px;color:var(--text-muted)">${title}</h4>`;
+  html += '<div style="overflow-x:auto"><table style="min-width:920px">';
+  html += '<thead><tr><th>ローテ</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th>';
+  CATEGORY_ORDER.forEach(cat => {
+    html += `<th>${CATEGORY_LABELS[cat]}本数</th><th>${CATEGORY_LABELS[cat]}決定率</th>`;
+  });
+  html += '</tr></thead><tbody>';
+  rows.forEach(row => {
+    const label = typeof row.rotation === 'number' ? `S${row.rotation}` : row.rotation;
+    html += `<tr><td>${label}</td><td>${row.attempts}</td><td>${row.points}</td><td>${row.errors}</td><td>${pct(row.kill_rate)}</td>`;
+    CATEGORY_ORDER.forEach(cat => {
+      const c = row.categories[cat];
+      html += `<td>${c.attempts}</td><td>${pct(c.kill_rate)}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+function scoreChartSvg(points, title, ownLabel, opponentLabel) {
+  const W = 640, H = 240;
+  const padL = 32, padR = 34, padT = 14, padB = 14;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const n = points.length;
+  const maxScore = Math.max(1, ...points.map(p => Math.max(p.own, p.opponent)));
+  const yMax = Math.ceil((maxScore + 1) / 5) * 5;
+  const xAt = i => padL + (n <= 1 ? 0 : (i / (n - 1)) * plotW);
+  const yAt = v => padT + plotH - (v / yMax) * plotH;
+
+  let gridSvg = '';
+  for (let t = 0; t <= yMax; t += 5) {
+    const y = yAt(t);
+    gridSvg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" `
+             + `stroke="var(--grid)" stroke-width="1"/>`;
+    gridSvg += `<text x="${padL - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11" `
+             + `fill="var(--text-muted)">${t}</text>`;
+  }
+
+  function polylineAndDots(key, colorVar) {
+    const coords = points.map((p, i) => `${xAt(i).toFixed(1)},${yAt(p[key]).toFixed(1)}`).join(' ');
+    const dots = points.map((p, i) => {
+      const cx = xAt(i).toFixed(1), cy = yAt(p[key]).toFixed(1);
+      return `<circle cx="${cx}" cy="${cy}" r="3" fill="${colorVar}" stroke="var(--surface-1)" `
+           + `stroke-width="1"><title>${i}本目: ${p.own}-${p.opponent}</title></circle>`;
+    }).join('');
+    return `<polyline points="${coords}" fill="none" stroke="${colorVar}" stroke-width="2" `
+         + `stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
+  }
+
+  const last = points[points.length - 1];
+  const lx = xAt(points.length - 1);
+  let ownLy = yAt(last.own);
+  let oppLy = yAt(last.opponent);
+  // 2つの最終スコアが近いと数字が重なるので、近すぎる場合は少しずらす
+  if (Math.abs(ownLy - oppLy) < 12) {
+    if (ownLy <= oppLy) { ownLy -= 6; oppLy += 6; } else { ownLy += 6; oppLy -= 6; }
+  }
+
+  function endMark(cy, val, colorVar) {
+    return `<circle cx="${lx.toFixed(1)}" cy="${yAt(val).toFixed(1)}" r="5" fill="${colorVar}" `
+         + `stroke="var(--surface-1)" stroke-width="2"/>`
+         + `<text x="${(lx + 9).toFixed(1)}" y="${(cy + 4).toFixed(1)}" font-size="12" font-weight="600" `
+         + `fill="var(--text-primary)">${val}</text>`;
+  }
+
+  return `<div class="score-chart">`
+       + `<div class="score-chart-title">${title}</div>`
+       + `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">`
+       + gridSvg
+       + polylineAndDots('own', 'var(--series-blue)') + polylineAndDots('opponent', 'var(--series-orange)')
+       + endMark(ownLy, last.own, 'var(--series-blue)') + endMark(oppLy, last.opponent, 'var(--series-orange)')
+       + `</svg>`
+       + `<div class="score-chart-legend">`
+       + `<span class="legend-item"><span class="legend-swatch" style="background:var(--series-blue)"></span>`
+       + `${escapeHtml(ownLabel)}</span>`
+       + `<span class="legend-item"><span class="legend-swatch" style="background:var(--series-orange)"></span>`
+       + `${escapeHtml(opponentLabel)}</span>`
+       + `</div></div>`;
+}
+
+function selectScoreProgressionSet(s, chipEl) {
+  document.querySelectorAll('#scoreProgressionSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
+  document.getElementById('scoreProgressionChartArea').innerHTML =
+    scoreChartSvg(s.points, `第${s.setNumber}セット`, DATA.teamLabel, DATA.opponent);
+}
+
+function showScoreProgressionCharts() {
+  const btnEl = document.getElementById('scoreProgressionSetButtons');
+  const chartEl = document.getElementById('scoreProgressionChartArea');
+  btnEl.innerHTML = '';
+  DATA.scoreProgression.bySet.forEach((s, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = `第${s.setNumber}セット`;
+    chip.addEventListener('click', () => selectScoreProgressionSet(s, chip));
+    if (idx === 0) chip.classList.add('selected');
+    btnEl.appendChild(chip);
+  });
+  if (DATA.scoreProgression.bySet.length) {
+    const first = DATA.scoreProgression.bySet[0];
+    chartEl.innerHTML = scoreChartSvg(first.points, `第${first.setNumber}セット`, DATA.teamLabel, DATA.opponent);
+  } else {
+    chartEl.innerHTML = '';
+  }
+}
+
+function showRotationTables() {
+  const el = document.getElementById('rotationTables');
+  let html = '';
+  DATA.rotation.bySet.forEach(s => {
+    html += rotationTableHtml(s.rows, `第${s.setNumber}セット`);
+  });
+  html += rotationTableHtml(DATA.rotation.total.rows, '全セット合計');
+  el.innerHTML = html;
+}
+
+function selectTeam(chipEl) {
+  markSelected(chipEl);
+  showDetail(DATA.team.name, 'チーム合計 ／ 全セット合計', DATA.team.total, DATA.team.sets);
+}
+
+function showSideOutBreakTable() {
+  const body = document.getElementById('sideOutBreakBody');
+  let html = '';
+  DATA.sideOutBreak.bySet.forEach(s => {
+    html += `<tr><td>第${s.setNumber}セット</td><td>${s.serve_total}</td><td>${pct(s.break_rate)}</td>`
+          + `<td>${s.receive_total}</td><td>${pct(s.side_out_rate)}</td></tr>`;
+  });
+  const t = DATA.sideOutBreak.total;
+  html += `<tr><td>合計</td><td>${t.serve_total}</td><td>${pct(t.break_rate)}</td>`
+        + `<td>${t.receive_total}</td><td>${pct(t.side_out_rate)}</td></tr>`;
+  body.innerHTML = html;
+}
+
+function showPage(n) {
+  document.getElementById('page1').classList.toggle('active', n === 1);
+  document.getElementById('page2').classList.toggle('active', n === 2);
+  document.getElementById('tabBtn1').classList.toggle('active', n === 1);
+  document.getElementById('tabBtn2').classList.toggle('active', n === 2);
+}
+
+function renderMatchSelector(matches) {
+  const sel = document.getElementById('matchSelector');
+  sel.innerHTML = '';
+  matches.forEach(m => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip match-chip';
+    chip.textContent = `${m.matchDate} 対 ${m.opponent}`;
+    chip.addEventListener('click', () => loadMatch(m, chip));
+    sel.appendChild(chip);
+  });
+}
+
+function loadMatch(entry, chipEl) {
+  fetch(entry.dataFile)
+    .then(res => res.json())
+    .then(data => {
+      DATA = data;
+      document.querySelectorAll('.match-chip').forEach(c => c.classList.remove('selected'));
+      if (chipEl) {
+        chipEl.classList.add('selected');
+      } else {
+        const chips = document.querySelectorAll('.match-chip');
+        if (chips.length) chips[0].classList.add('selected');
+      }
+      document.getElementById('mainArea').style.display = 'block';
+      document.getElementById('matchTitle').textContent =
+        `${DATA.teamLabel} 対 ${DATA.opponent}（${DATA.matchDate}）`;
+      document.getElementById('detailCard').style.display = 'none';
+      document.getElementById('detailCard2').style.display = 'none';
+      renderTeamGrid();
+      renderPlayerGrid(DATA.total);
+      showRotationTables();
+      showSideOutBreakTable();
+      showScoreProgressionCharts();
+      showPage(1);
+    });
+}
+
+document.getElementById('teamTitle').textContent = '東京スリジエ（女子）';
+
+fetch('matches.json')
+  .then(res => res.ok ? res.json() : [])
+  .catch(() => [])
+  .then(matches => {
+    if (!matches || !matches.length) {
+      document.getElementById('noMatchesHint').style.display = 'block';
+      return;
+    }
+    renderMatchSelector(matches);
+    loadMatch(matches[0]);
+  });
+</script>
+</body>
+</html>
