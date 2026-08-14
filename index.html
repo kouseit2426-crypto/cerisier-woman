@@ -184,9 +184,10 @@
     <div class="card" id="scoreProgressionCard">
       <h3 class="section-label" style="margin-top:0">セット経過（得点推移）</h3>
       <p class="hint" style="margin-top:-6px">
-        ラリーが決まるたびに、その時点のスコアをグラフにしています。
+        ラリーが決まるたびに、その時点のスコアをグラフにしています。セットを選んでください。
       </p>
-      <div id="scoreProgressionCharts"></div>
+      <div class="player-grid" id="scoreProgressionSetButtons"></div>
+      <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
     </div>
 
     <div class="card" id="rotationCard">
@@ -364,7 +365,7 @@ function escapeHtml(str) {
 
 function scoreChartSvg(points, title, ownLabel, opponentLabel) {
   const W = 640, H = 240;
-  const padL = 32, padR = 14, padT = 14, padB = 14;
+  const padL = 32, padR = 34, padT = 14, padB = 14;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const n = points.length;
@@ -382,26 +383,39 @@ function scoreChartSvg(points, title, ownLabel, opponentLabel) {
              + `fill="var(--text-muted)">${t}</text>`;
   }
 
-  function lineSvg(key, colorVar) {
+  function polylineAndDots(key, colorVar) {
     const coords = points.map((p, i) => `${xAt(i).toFixed(1)},${yAt(p[key]).toFixed(1)}`).join(' ');
     const dots = points.map((p, i) => {
       const cx = xAt(i).toFixed(1), cy = yAt(p[key]).toFixed(1);
       return `<circle cx="${cx}" cy="${cy}" r="3" fill="${colorVar}" stroke="var(--surface-1)" `
            + `stroke-width="1"><title>${i}本目: ${p.own}-${p.opponent}</title></circle>`;
     }).join('');
-    const last = points[points.length - 1];
-    const lx = xAt(points.length - 1).toFixed(1), ly = yAt(last[key]).toFixed(1);
     return `<polyline points="${coords}" fill="none" stroke="${colorVar}" stroke-width="2" `
-         + `stroke-linejoin="round" stroke-linecap="round"/>${dots}`
-         + `<circle cx="${lx}" cy="${ly}" r="5" fill="${colorVar}" stroke="var(--surface-1)" stroke-width="2"/>`
-         + `<text x="${Number(lx) + 8}" y="${Number(ly) + 4}" font-size="12" font-weight="600" `
-         + `fill="var(--text-primary)">${last[key]}</text>`;
+         + `stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
+  }
+
+  const last = points[points.length - 1];
+  const lx = xAt(points.length - 1);
+  let ownLy = yAt(last.own);
+  let oppLy = yAt(last.opponent);
+  // 2つの最終スコアが近いと数字が重なるので、近すぎる場合は少しずらす
+  if (Math.abs(ownLy - oppLy) < 12) {
+    if (ownLy <= oppLy) { ownLy -= 6; oppLy += 6; } else { ownLy += 6; oppLy -= 6; }
+  }
+
+  function endMark(cy, val, colorVar) {
+    return `<circle cx="${lx.toFixed(1)}" cy="${yAt(val).toFixed(1)}" r="5" fill="${colorVar}" `
+         + `stroke="var(--surface-1)" stroke-width="2"/>`
+         + `<text x="${(lx + 9).toFixed(1)}" y="${(cy + 4).toFixed(1)}" font-size="12" font-weight="600" `
+         + `fill="var(--text-primary)">${val}</text>`;
   }
 
   return `<div class="score-chart">`
        + `<div class="score-chart-title">${title}</div>`
        + `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">`
-       + gridSvg + lineSvg('own', 'var(--series-blue)') + lineSvg('opponent', 'var(--series-orange)')
+       + gridSvg
+       + polylineAndDots('own', 'var(--series-blue)') + polylineAndDots('opponent', 'var(--series-orange)')
+       + endMark(ownLy, last.own, 'var(--series-blue)') + endMark(oppLy, last.opponent, 'var(--series-orange)')
        + `</svg>`
        + `<div class="score-chart-legend">`
        + `<span class="legend-item"><span class="legend-swatch" style="background:var(--series-blue)"></span>`
@@ -411,13 +425,31 @@ function scoreChartSvg(points, title, ownLabel, opponentLabel) {
        + `</div></div>`;
 }
 
+function selectScoreProgressionSet(s, chipEl) {
+  document.querySelectorAll('#scoreProgressionSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
+  document.getElementById('scoreProgressionChartArea').innerHTML =
+    scoreChartSvg(s.points, `第${s.setNumber}セット`, DATA.teamLabel, DATA.opponent);
+}
+
 function showScoreProgressionCharts() {
-  const el = document.getElementById('scoreProgressionCharts');
-  let html = '';
-  DATA.scoreProgression.bySet.forEach(s => {
-    html += scoreChartSvg(s.points, `第${s.setNumber}セット`, DATA.teamLabel, DATA.opponent);
+  const btnEl = document.getElementById('scoreProgressionSetButtons');
+  const chartEl = document.getElementById('scoreProgressionChartArea');
+  btnEl.innerHTML = '';
+  DATA.scoreProgression.bySet.forEach((s, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = `第${s.setNumber}セット`;
+    chip.addEventListener('click', () => selectScoreProgressionSet(s, chip));
+    if (idx === 0) chip.classList.add('selected');
+    btnEl.appendChild(chip);
   });
-  el.innerHTML = html;
+  if (DATA.scoreProgression.bySet.length) {
+    const first = DATA.scoreProgression.bySet[0];
+    chartEl.innerHTML = scoreChartSvg(first.points, `第${first.setNumber}セット`, DATA.teamLabel, DATA.opponent);
+  } else {
+    chartEl.innerHTML = '';
+  }
 }
 
 function showRotationTables() {
