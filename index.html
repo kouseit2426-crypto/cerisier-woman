@@ -46,8 +46,18 @@
   header h1 { font-size: 30px; margin: 0 0 4px; }
   header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
 
+  .header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .sidebar-toggle-btn {
+    font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    padding: 9px 16px; border-radius: 10px; white-space: nowrap;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .sidebar-toggle-btn:hover { background: var(--grid); }
+
   .app-layout { display: flex; align-items: flex-start; gap: 24px; }
   .sidebar { width: 300px; flex-shrink: 0; position: sticky; top: 20px; }
+  .sidebar.collapsed { display: none; }
   .sidebar .card { margin-bottom: 18px; }
   .sidebar .card:last-child { margin-bottom: 0; }
   .sidebar-label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
@@ -56,6 +66,25 @@
     .app-layout { flex-direction: column; }
     .sidebar { width: 100%; position: static; }
   }
+
+  .player-toggle-btn {
+    width: 100%; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    padding: 9px 12px; border-radius: 8px; margin-top: 8px;
+    border: 1px solid var(--border); background: var(--page-plane); color: var(--text-primary);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .player-toggle-btn:hover { background: var(--grid); }
+  .player-toggle-btn .arrow { color: var(--text-muted); font-size: 11px; }
+  .player-checklist {
+    display: flex; flex-direction: column; gap: 2px; margin-top: 8px;
+    max-height: 320px; overflow-y: auto;
+  }
+  .player-check-item {
+    display: flex; align-items: center; gap: 9px; font-size: 13.5px;
+    padding: 7px 6px; border-radius: 6px; cursor: pointer; color: var(--text-primary);
+  }
+  .player-check-item:hover { background: var(--grid); }
+  .player-check-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--series-blue); cursor: pointer; }
 
   .card {
     background: var(--surface-1);
@@ -151,13 +180,18 @@
 <body>
 <div class="viz-root">
 <div class="wrap">
-  <header>
-    <h1 id="teamTitle"></h1>
-    <p>試合を選ぶと、その試合のスタッツが表示されます</p>
+  <header class="header-row">
+    <div>
+      <h1 id="teamTitle"></h1>
+      <p>試合を選ぶと、その試合のスタッツが表示されます</p>
+    </div>
+    <button type="button" id="sidebarToggleBtn" class="sidebar-toggle-btn">
+      <span id="sidebarToggleIcon">☰</span><span id="sidebarToggleLabel">メニューを閉じる</span>
+    </button>
   </header>
 
   <div class="app-layout">
-  <div class="sidebar">
+  <div class="sidebar" id="sidebar">
     <div class="card drop-zone-card">
       <div class="sidebar-label">.dvwファイルを追加</div>
       <div id="dropZone" class="drop-zone">
@@ -169,18 +203,34 @@
 
     <div class="card">
       <div class="sidebar-label">試合を選択</div>
-      <div class="player-grid" id="matchSelector"></div>
+      <button type="button" class="player-toggle-btn" id="matchListToggleBtn" style="margin-top:0">
+        <span id="matchListToggleLabel">試合一覧を表示</span>
+        <span class="arrow" id="matchListToggleArrow">▾</span>
+      </button>
+      <div class="player-checklist" id="matchChecklist" style="display:none"></div>
       <p class="hint" id="noMatchesHint" style="display:none">まだ試合データがありません。</p>
+      <p class="hint" id="matchComparisonHint" style="display:none">2試合以上選ぶと、並べて比較できます。</p>
     </div>
 
     <div class="card" id="playerSelectCard" style="display:none">
       <div class="sidebar-label">選手を選択</div>
       <div class="player-grid" id="teamGrid"></div>
-      <div class="player-grid" id="playerGrid" style="margin-top:8px;"></div>
+      <button type="button" class="player-toggle-btn" id="playerListToggleBtn">
+        <span id="playerListToggleLabel">選手一覧を表示</span>
+        <span class="arrow" id="playerListToggleArrow">▾</span>
+      </button>
+      <div class="player-checklist" id="playerChecklist" style="display:none"></div>
     </div>
   </div>
 
   <div class="main-content">
+  <div class="card" id="matchComparisonCard" style="display:none">
+    <div class="detail-header">
+      <h2 id="matchComparisonTitle"></h2>
+    </div>
+    <p class="hint" style="margin-top:-6px">試合を2つ以上選ぶと、ここに並べて比較表示されます。もう一度チェックを外すと選択解除できます。</p>
+    <div id="matchComparisonBody"></div>
+  </div>
   <div id="mainArea">
   <h2 id="matchTitle" style="font-size:20px;margin:0 0 16px;color:var(--text-secondary)"></h2>
 
@@ -726,23 +776,12 @@ function handleDvwFile(file) {
       return;
     }
 
-    // その場ですぐ表示する
-    DATA = data;
-    document.getElementById('mainArea').style.display = 'block';
-    document.getElementById('playerSelectCard').style.display = 'block';
-    document.getElementById('matchTitle').textContent =
-      `${DATA.teamLabel} 対 ${DATA.opponent}（${DATA.matchDate}）`;
-    document.getElementById('detailCard').style.display = 'none';
-    document.getElementById('detailCard2').style.display = 'none';
-    document.getElementById('comparisonCard').style.display = 'none';
-    selectedPlayerNumbers.clear();
-    document.querySelectorAll('.match-chip').forEach(c => c.classList.remove('selected'));
-    renderTeamGrid();
-    renderPlayerGrid(DATA.total);
-    showRotationTables();
-    showSideOutBreakTable();
-    showScoreProgressionCharts();
-    showPage(1);
+    // その場ですぐ表示する（プレビューなので、試合一覧のチェックはいったん全部外す）
+    selectedMatchKeys.clear();
+    document.querySelectorAll('#matchChecklist input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+    updateMatchListToggleLabel();
+    document.getElementById('matchComparisonCard').style.display = 'none';
+    showSingleMatch(data);
 
     // GitHubに保存するためのダウンロードを用意する
     const slug = dvBuildMatchSlug(DATA.matchDate, DATA.opponent);
@@ -809,14 +848,59 @@ function renderTeamGrid() {
 }
 
 function renderPlayerGrid(players) {
-  const grid = document.getElementById('playerGrid');
-  grid.innerHTML = '';
+  const list = document.getElementById('playerChecklist');
+  list.innerHTML = '';
   players.slice().sort((a, b) => a.number - b.number).forEach(p => {
-    const chip = document.createElement('button');
-    chip.className = 'player-chip';
-    chip.textContent = p.name;
-    chip.addEventListener('click', () => selectPlayer(p.number, chip));
-    grid.appendChild(chip);
+    const label = document.createElement('label');
+    label.className = 'player-check-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = selectedPlayerNumbers.has(p.number);
+    cb.addEventListener('change', () => togglePlayerCheckbox(p.number, cb));
+    const span = document.createElement('span');
+    span.textContent = p.name;
+    label.appendChild(cb);
+    label.appendChild(span);
+    list.appendChild(label);
+  });
+  updatePlayerListToggleLabel();
+}
+
+function updatePlayerListToggleLabel() {
+  const n = selectedPlayerNumbers.size;
+  document.getElementById('playerListToggleLabel').textContent =
+    n > 0 ? `選手一覧（${n}人選択中）` : '選手一覧を表示';
+}
+
+function togglePlayerCheckbox(number, cbEl) {
+  document.querySelectorAll('#teamGrid .player-chip').forEach(c => c.classList.remove('selected'));
+  if (cbEl.checked) {
+    selectedPlayerNumbers.add(number);
+  } else {
+    selectedPlayerNumbers.delete(number);
+  }
+  updatePlayerListToggleLabel();
+  renderPlayerSelection();
+}
+
+function setupPlayerListToggle() {
+  const btn = document.getElementById('playerListToggleBtn');
+  const list = document.getElementById('playerChecklist');
+  const arrow = document.getElementById('playerListToggleArrow');
+  btn.addEventListener('click', () => {
+    const isOpen = list.style.display !== 'none';
+    list.style.display = isOpen ? 'none' : 'flex';
+    arrow.textContent = isOpen ? '▾' : '▴';
+  });
+}
+
+function setupSidebarToggle() {
+  const btn = document.getElementById('sidebarToggleBtn');
+  const sidebar = document.getElementById('sidebar');
+  const label = document.getElementById('sidebarToggleLabel');
+  btn.addEventListener('click', () => {
+    const collapsed = sidebar.classList.toggle('collapsed');
+    label.textContent = collapsed ? 'メニューを開く' : 'メニューを閉じる';
   });
 }
 
@@ -910,18 +994,6 @@ function showDetail(name, subLabel, totalStats, setRows) {
 }
 
 let selectedPlayerNumbers = new Set();
-
-function selectPlayer(number, chipEl) {
-  document.querySelectorAll('#teamGrid .player-chip').forEach(c => c.classList.remove('selected'));
-  if (selectedPlayerNumbers.has(number)) {
-    selectedPlayerNumbers.delete(number);
-    chipEl.classList.remove('selected');
-  } else {
-    selectedPlayerNumbers.add(number);
-    chipEl.classList.add('selected');
-  }
-  renderPlayerSelection();
-}
 
 function renderPlayerSelection() {
   const nums = Array.from(selectedPlayerNumbers);
@@ -1162,6 +1234,8 @@ function showRotationTables() {
 
 function selectTeam(chipEl) {
   selectedPlayerNumbers.clear();
+  document.querySelectorAll('#playerChecklist input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+  updatePlayerListToggleLabel();
   markSelected(chipEl);
   document.getElementById('comparisonCard').style.display = 'none';
   showDetail(DATA.team.name, 'チーム合計 ／ 全セット合計', DATA.team.total, DATA.team.sets);
@@ -1201,49 +1275,194 @@ function showPage(n) {
   document.getElementById('tabBtn2').classList.toggle('active', n === 2);
 }
 
-function renderMatchSelector(matches) {
-  const sel = document.getElementById('matchSelector');
-  sel.innerHTML = '';
-  matches.forEach(m => {
-    const chip = document.createElement('button');
-    chip.className = 'player-chip match-chip';
-    chip.textContent = `${m.matchDate} 対 ${m.opponent}`;
-    chip.addEventListener('click', () => loadMatch(m, chip));
-    sel.appendChild(chip);
+let selectedMatchKeys = new Set();
+const matchDataCache = {};
+
+function matchKey(entry) { return entry.dataFile; }
+
+function fetchMatchData(entry) {
+  const key = matchKey(entry);
+  if (matchDataCache[key]) return Promise.resolve(matchDataCache[key]);
+  return fetch(entry.dataFile).then(res => res.json()).then(data => {
+    matchDataCache[key] = data;
+    return data;
   });
 }
 
-function loadMatch(entry, chipEl) {
-  fetch(entry.dataFile)
-    .then(res => res.json())
-    .then(data => {
-      DATA = data;
-      document.querySelectorAll('.match-chip').forEach(c => c.classList.remove('selected'));
-      if (chipEl) {
-        chipEl.classList.add('selected');
-      } else {
-        const chips = document.querySelectorAll('.match-chip');
-        if (chips.length) chips[0].classList.add('selected');
-      }
-      document.getElementById('mainArea').style.display = 'block';
-      document.getElementById('playerSelectCard').style.display = 'block';
-      document.getElementById('matchTitle').textContent =
-        `${DATA.teamLabel} 対 ${DATA.opponent}（${DATA.matchDate}）`;
-      document.getElementById('detailCard').style.display = 'none';
-      document.getElementById('detailCard2').style.display = 'none';
-      document.getElementById('comparisonCard').style.display = 'none';
-      selectedPlayerNumbers.clear();
-      renderTeamGrid();
-      renderPlayerGrid(DATA.total);
-      showRotationTables();
-      showSideOutBreakTable();
-      showScoreProgressionCharts();
-      showPage(1);
-    });
+function updateMatchListToggleLabel() {
+  const n = selectedMatchKeys.size;
+  document.getElementById('matchListToggleLabel').textContent =
+    n > 0 ? `試合一覧（${n}試合選択中）` : '試合一覧を表示';
+  document.getElementById('matchComparisonHint').style.display = n >= 2 ? 'none' : '';
+}
+
+function renderMatchChecklist(matches) {
+  const list = document.getElementById('matchChecklist');
+  list.innerHTML = '';
+  matches.forEach(m => {
+    const label = document.createElement('label');
+    label.className = 'player-check-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = selectedMatchKeys.has(matchKey(m));
+    cb.addEventListener('change', () => toggleMatchCheckbox(m, cb));
+    const span = document.createElement('span');
+    span.textContent = `${m.matchDate} 対 ${m.opponent}`;
+    label.appendChild(cb);
+    label.appendChild(span);
+    list.appendChild(label);
+  });
+  updateMatchListToggleLabel();
+}
+
+function setupMatchListToggle() {
+  const btn = document.getElementById('matchListToggleBtn');
+  const list = document.getElementById('matchChecklist');
+  const arrow = document.getElementById('matchListToggleArrow');
+  btn.addEventListener('click', () => {
+    const isOpen = list.style.display !== 'none';
+    list.style.display = isOpen ? 'none' : 'flex';
+    arrow.textContent = isOpen ? '▾' : '▴';
+  });
+}
+
+function toggleMatchCheckbox(entry, cbEl) {
+  const key = matchKey(entry);
+  if (cbEl.checked) {
+    selectedMatchKeys.add(key);
+  } else {
+    selectedMatchKeys.delete(key);
+  }
+  updateMatchListToggleLabel();
+  renderMatchSelection();
+}
+
+function renderMatchSelection() {
+  const entries = Array.from(selectedMatchKeys)
+    .map(k => MATCHES.find(m => matchKey(m) === k))
+    .filter(Boolean);
+
+  if (entries.length === 0) {
+    document.getElementById('mainArea').style.display = 'none';
+    document.getElementById('playerSelectCard').style.display = 'none';
+    document.getElementById('matchComparisonCard').style.display = 'none';
+    return;
+  }
+
+  if (entries.length === 1) {
+    document.getElementById('matchComparisonCard').style.display = 'none';
+    fetchMatchData(entries[0]).then(data => showSingleMatch(data));
+    return;
+  }
+
+  document.getElementById('mainArea').style.display = 'none';
+  document.getElementById('playerSelectCard').style.display = 'none';
+  Promise.all(entries.map(fetchMatchData)).then(dataList => showMatchComparison(dataList));
+}
+
+function showSingleMatch(data) {
+  DATA = data;
+  document.getElementById('mainArea').style.display = 'block';
+  document.getElementById('playerSelectCard').style.display = 'block';
+  document.getElementById('matchTitle').textContent =
+    `${DATA.teamLabel} 対 ${DATA.opponent}（${DATA.matchDate}）`;
+  document.getElementById('detailCard').style.display = 'none';
+  document.getElementById('detailCard2').style.display = 'none';
+  document.getElementById('comparisonCard').style.display = 'none';
+  selectedPlayerNumbers.clear();
+  renderTeamGrid();
+  renderPlayerGrid(DATA.total);
+  showRotationTables();
+  showSideOutBreakTable();
+  showScoreProgressionCharts();
+  showPage(1);
+}
+
+function computeSetScoreSummary(scoreProgression) {
+  let setsWon = 0, setsLost = 0;
+  (scoreProgression.bySet || []).forEach(s => {
+    const last = s.points[s.points.length - 1];
+    if (!last) return;
+    if (last.own > last.opponent) setsWon++;
+    else if (last.opponent > last.own) setsLost++;
+  });
+  return { setsWon, setsLost };
+}
+
+function matchComparisonRowHtml(label, matches, getter, isPct) {
+  let html = `<tr><td>${escapeHtml(label)}</td>`;
+  matches.forEach(m => {
+    const v = getter(m);
+    html += `<td>${isPct ? pct(v) : v}</td>`;
+  });
+  html += '</tr>';
+  return html;
+}
+
+function matchComparisonSectionHtml(title, colspan) {
+  return `<tr class="section-row"><td colspan="${colspan}">${escapeHtml(title)}</td></tr>`;
+}
+
+function matchComparisonTableHtml(matches) {
+  const colspan = matches.length + 1;
+  let html = '<div style="overflow-x:auto"><table class="rotation-table comparison-table">';
+  html += '<thead><tr><th>項目</th>';
+  matches.forEach(m => {
+    html += `<th>${escapeHtml(m.opponent)}<br><span style="font-weight:400;font-size:12px">${escapeHtml(m.matchDate)}</span></th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  html += matchComparisonSectionHtml('試合結果', colspan);
+  html += '<tr><td>セット</td>';
+  matches.forEach(m => {
+    const s = computeSetScoreSummary(m.scoreProgression);
+    html += `<td>${s.setsWon}勝${s.setsLost}敗</td>`;
+  });
+  html += '</tr>';
+
+  html += matchComparisonSectionHtml('アタック（全セット合計）', colspan);
+  html += matchComparisonRowHtml('打数', matches, m => m.team.total.attempts, false);
+  html += matchComparisonRowHtml('得点', matches, m => m.team.total.points, false);
+  html += matchComparisonRowHtml('ミス', matches, m => m.team.total.errors, false);
+  html += matchComparisonRowHtml('決定率', matches, m => m.team.total.kill_rate, true);
+  html += matchComparisonRowHtml('効果率', matches, m => m.team.total.efficiency, true);
+
+  html += matchComparisonSectionHtml('ブロック（全セット合計）', colspan);
+  html += matchComparisonRowHtml('本数', matches, m => m.team.total.block_attempts, false);
+  html += matchComparisonRowHtml('得点', matches, m => m.team.total.block_points, false);
+  html += matchComparisonRowHtml('失点', matches, m => m.team.total.block_errors, false);
+
+  html += matchComparisonSectionHtml('サーブ（全セット合計）', colspan);
+  html += matchComparisonRowHtml('打数', matches, m => m.team.total.serve_attempts, false);
+  html += matchComparisonRowHtml('エース', matches, m => m.team.total.serve_aces, false);
+  html += matchComparisonRowHtml('ミス', matches, m => m.team.total.serve_errors, false);
+  html += matchComparisonRowHtml('エース率', matches, m => m.team.total.serve_ace_rate, true);
+  html += matchComparisonRowHtml('効果率', matches, m => m.team.total.serve_efficiency, true);
+
+  html += matchComparisonSectionHtml('レシーブ（全セット合計）', colspan);
+  html += matchComparisonRowHtml('本数', matches, m => m.team.total.receive_attempts, false);
+  html += matchComparisonRowHtml('返球率', matches, m => m.team.total.receive_return_rate, true);
+  html += matchComparisonRowHtml('A率', matches, m => m.team.total.receive_a_rate, true);
+
+  html += matchComparisonSectionHtml('サイドアウト率・ブレイク率（チーム全体）', colspan);
+  html += matchComparisonRowHtml('ブレイク率', matches, m => m.sideOutBreak.total.break_rate, true);
+  html += matchComparisonRowHtml('サイドアウト率', matches, m => m.sideOutBreak.total.side_out_rate, true);
+
+  html += '</tbody></table></div>';
+  return html;
+}
+
+function showMatchComparison(matches) {
+  document.getElementById('matchComparisonCard').style.display = 'block';
+  document.getElementById('matchComparisonTitle').textContent = `試合比較（${matches.length}試合）`;
+  document.getElementById('matchComparisonBody').innerHTML = matchComparisonTableHtml(matches);
 }
 
 document.getElementById('teamTitle').textContent = '東京スリジエ（女子）';
 setupDropZone();
+setupPlayerListToggle();
+setupSidebarToggle();
+setupMatchListToggle();
 
 fetch('matches.json')
   .then(res => res.ok ? res.json() : [])
@@ -1254,8 +1473,9 @@ fetch('matches.json')
       document.getElementById('noMatchesHint').style.display = 'block';
       return;
     }
-    renderMatchSelector(matches);
-    loadMatch(matches[0]);
+    selectedMatchKeys.add(matchKey(matches[0]));
+    renderMatchChecklist(matches);
+    renderMatchSelection();
   });
 </script>
 </body>
