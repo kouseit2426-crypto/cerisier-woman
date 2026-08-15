@@ -295,7 +295,7 @@
     </div>
 
     <div class="card" id="leaderboardCard">
-      <h3 class="section-label" style="margin-top:0">選手ランキング（この試合）</h3>
+      <h3 class="section-label" id="leaderboardLabel" style="margin-top:0">選手ランキング（この試合）</h3>
       <p class="hint" style="margin-top:-6px">
         規定本数（3本）以上の選手が対象です。
       </p>
@@ -305,8 +305,8 @@
 
   <div class="page" id="page2">
     <div class="card">
-      <h3 class="section-label" style="margin-top:0">サイドアウト率・ブレイク率（チーム全体）</h3>
-      <p class="hint" style="margin-top:-6px">
+      <h3 class="section-label" id="sideOutBreakLabel" style="margin-top:0">サイドアウト率・ブレイク率（チーム全体）</h3>
+      <p class="hint" style="margin-top:-6px" id="sideOutBreakHint">
         サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。セットを選んでください。
       </p>
       <div class="player-grid" id="sideOutBreakSetButtons"></div>
@@ -330,8 +330,8 @@
     </div>
 
     <div class="card" id="rotationCard">
-      <h3 class="section-label" style="margin-top:0">ローテーション別 攻撃タイプ分布（チーム全体）</h3>
-      <p class="hint" style="margin-top:-6px">
+      <h3 class="section-label" id="rotationCardLabel" style="margin-top:0">ローテーション別 攻撃タイプ分布（チーム全体）</h3>
+      <p class="hint" style="margin-top:-6px" id="rotationCardHint">
         セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。
         攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。セットを選んでください。
       </p>
@@ -1492,6 +1492,9 @@ function selectRotationSet(rows, chipEl) {
 }
 
 function showRotationTables() {
+  document.getElementById('rotationCardLabel').textContent = 'ローテーション別 攻撃タイプ分布（チーム全体）';
+  document.getElementById('rotationCardHint').textContent =
+    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。セットを選んでください。';
   const btnEl = document.getElementById('rotationSetButtons');
   btnEl.innerHTML = '';
   const items = DATA.rotation.bySet.map(s => ({ label: `第${s.setNumber}セット`, rows: s.rows }));
@@ -1506,6 +1509,17 @@ function showRotationTables() {
   });
   const last = items[items.length - 1];
   document.getElementById('rotationTables').innerHTML = rotationTableHtml(last.rows);
+}
+
+// 試合を2つ以上選んでいるときは、セットごとの切り替えはせず、選んだ試合すべての合計を1つ表示する
+function showRotationTablesCombined(entries, dataList) {
+  document.getElementById('rotationCardLabel').textContent =
+    `ローテーション別 攻撃タイプ分布（チーム全体・選んだ${entries.length}試合の合計）`;
+  document.getElementById('rotationCardHint').textContent =
+    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。選んだ試合すべての合計を表示しています。';
+  document.getElementById('rotationSetButtons').innerHTML = '';
+  const combinedRows = combineRotationRows(dataList.map(d => d.rotation.total.rows));
+  document.getElementById('rotationTables').innerHTML = rotationTableHtml(combinedRows);
 }
 
 function selectTeam(chipEl) {
@@ -1530,6 +1544,10 @@ function selectSideOutBreakSet(s, chipEl) {
 }
 
 function showSideOutBreakTable() {
+  document.getElementById('sideOutBreakLabel').textContent = 'サイドアウト率・ブレイク率（チーム全体）';
+  document.getElementById('sideOutBreakHint').textContent =
+    'サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。セットを選んでください。';
+  document.getElementById('sideOutBreakByRotationLabel').textContent = 'ローテーション別（全セット合計）';
   const btnEl = document.getElementById('sideOutBreakSetButtons');
   btnEl.innerHTML = '';
   const items = DATA.sideOutBreak.bySet.map(s => ({ label: `第${s.setNumber}セット`, data: s }));
@@ -1545,6 +1563,24 @@ function showSideOutBreakTable() {
   const last = items[items.length - 1];
   selectSideOutBreakSet(last.data, btnEl.children[items.length - 1]);
   document.getElementById('sideOutBreakByRotationBody').innerHTML = sideOutBreakByRotationHtml(DATA.sideOutBreak.byRotation || []);
+}
+
+// 試合を2つ以上選んでいるときは、セットごとの切り替えはせず、選んだ試合すべての合計を1つ表示する
+function showSideOutBreakTableCombined(entries, dataList) {
+  document.getElementById('sideOutBreakLabel').textContent =
+    `サイドアウト率・ブレイク率（チーム全体・選んだ${entries.length}試合の合計）`;
+  document.getElementById('sideOutBreakHint').textContent =
+    'サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。選んだ試合すべての合計を表示しています。';
+  document.getElementById('sideOutBreakByRotationLabel').textContent = `ローテーション別（選んだ${entries.length}試合の合計）`;
+  document.getElementById('sideOutBreakSetButtons').innerHTML = '';
+  const combinedTotal = combineSideOutBreak(dataList.map(d => d.sideOutBreak.total));
+  document.getElementById('sideOutBreakTiles').innerHTML =
+      `<div class="stat-tile"><div class="k">サーブ本数</div><div class="v">${combinedTotal.serve_total}</div></div>`
+    + `<div class="stat-tile"><div class="k">ブレイク率</div><div class="v">${pct(combinedTotal.break_rate)}</div></div>`
+    + `<div class="stat-tile"><div class="k">レシーブ本数</div><div class="v">${combinedTotal.receive_total}</div></div>`
+    + `<div class="stat-tile"><div class="k">サイドアウト率</div><div class="v">${pct(combinedTotal.side_out_rate)}</div></div>`;
+  const combinedByRotation = combineSideOutBreakByRotation(dataList.map(d => d.sideOutBreak.byRotation || []));
+  document.getElementById('sideOutBreakByRotationBody').innerHTML = sideOutBreakByRotationHtml(combinedByRotation);
 }
 
 // ==================== ローテーション別のサイドアウト率・ブレイク率 ====================
@@ -1655,27 +1691,47 @@ function renderMatchSelection() {
   renderTeamGrid();
   renderPlayerGrid();
 
-  // 「選手別スタッツ」タブは、複数試合を選んでいても一番新しい試合を常に表示する
-  fetchMatchData(entries[0]).then(data => showSingleMatch(data));
-
   if (entries.length >= 2) {
-    Promise.all(entries.map(fetchMatchData)).then(dataList => showMatchComparison(dataList));
+    Promise.all(entries.map(fetchMatchData)).then(dataList => {
+      // 非同期で待っている間に試合の選択が変わっていたら、古い結果は描画しない
+      const stillSame = Array.from(selectedMatchKeys).sort().join(',') === entries.map(matchKey).sort().join(',');
+      if (!stillSame) return;
+      showSingleMatch(dataList[0], entries, dataList);
+      showMatchComparison(dataList);
+    });
   } else {
+    fetchMatchData(entries[0]).then(data => {
+      const stillSame = selectedMatchKeys.size === 1 && selectedMatchKeys.has(matchKey(entries[0]));
+      if (!stillSame) return;
+      showSingleMatch(data);
+    });
     document.getElementById('matchComparisonCard').style.display = 'none';
   }
 }
 
-function showSingleMatch(data) {
+function showSingleMatch(data, entries, dataList) {
   DATA = data;
   document.getElementById('mainArea').style.display = 'block';
   document.getElementById('matchTitle').textContent =
     `${DATA.teamLabel} 対 ${DATA.opponent}（${formatMatchDate(DATA.matchDate)}）`;
-  showRotationTables();
-  showSideOutBreakTable();
+  const combined = entries && dataList && entries.length >= 2;
+  if (combined) {
+    showRotationTablesCombined(entries, dataList);
+    showSideOutBreakTableCombined(entries, dataList);
+  } else {
+    showRotationTables();
+    showSideOutBreakTable();
+  }
   showScoreProgressionCharts();
   showPage(1);
   renderSingleMatchPlayerView();
-  document.getElementById('leaderboardBody').innerHTML = playerLeaderboardHtml(DATA.total || []);
+  if (combined) {
+    document.getElementById('leaderboardLabel').textContent = `選手ランキング（選んだ${entries.length}試合の合計）`;
+    document.getElementById('leaderboardBody').innerHTML = playerLeaderboardHtml(combinedPlayerTotalsList(dataList));
+  } else {
+    document.getElementById('leaderboardLabel').textContent = '選手ランキング（この試合）';
+    document.getElementById('leaderboardBody').innerHTML = playerLeaderboardHtml(DATA.total || []);
+  }
 }
 
 // ==================== 選手ランキング（規定本数以上の選手が対象） ====================
@@ -1890,6 +1946,69 @@ function combineSideOutBreak(list) {
     break_rate: dvRate(sum.serve_wins, sum.serve_total),
     side_out_rate: dvRate(sum.receive_wins, sum.receive_total),
   };
+}
+
+// ローテーション別 攻撃タイプ分布の表を、選んだ試合分すべてで足し合わせる
+// （各試合の rows は「S1〜S6 ＋ 合計」の7行で並びが揃っているので、同じ位置同士を合算する）
+function combineRotationRows(rowsList) {
+  const valid = rowsList.filter(r => r && r.length);
+  if (!valid.length) return [];
+  const rowCount = valid[0].length;
+  const rows = [];
+  for (let i = 0; i < rowCount; i++) {
+    const sum = { attempts: 0, points: 0, errors: 0 };
+    const catSum = {};
+    CATEGORY_ORDER.forEach(cat => { catSum[cat] = { attempts: 0, points: 0, errors: 0 }; });
+    valid.forEach(rowsForMatch => {
+      const r = rowsForMatch[i];
+      if (!r) return;
+      sum.attempts += r.attempts; sum.points += r.points; sum.errors += r.errors;
+      CATEGORY_ORDER.forEach(cat => {
+        const c = r.categories[cat];
+        catSum[cat].attempts += c.attempts; catSum[cat].points += c.points; catSum[cat].errors += c.errors;
+      });
+    });
+    const row = {
+      rotation: valid[0][i].rotation,
+      attempts: sum.attempts, points: sum.points, errors: sum.errors,
+      kill_rate: dvRate(sum.points, sum.attempts),
+      categories: {},
+    };
+    CATEGORY_ORDER.forEach(cat => {
+      row.categories[cat] = {
+        attempts: catSum[cat].attempts, points: catSum[cat].points, errors: catSum[cat].errors,
+        kill_rate: dvRate(catSum[cat].points, catSum[cat].attempts),
+      };
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ローテーション別のサイドアウト率・ブレイク率を、選んだ試合分すべてで足し合わせる
+function combineSideOutBreakByRotation(byRotationList) {
+  const valid = byRotationList.filter(r => r && r.length);
+  if (!valid.length) return [];
+  const rows = [];
+  for (let n = 1; n <= 6; n++) {
+    const entries = valid.map(rowsForMatch => rowsForMatch.find(r => r.rotation === n)).filter(Boolean);
+    rows.push({ rotation: n, ...combineSideOutBreak(entries) });
+  }
+  return rows;
+}
+
+// 選手ランキングを、選んだ試合分すべての選手成績の合計で作り直す
+function combinedPlayerTotalsList(dataList) {
+  const numbers = new Set();
+  dataList.forEach(d => (d.total || []).forEach(p => numbers.add(p.number)));
+  const list = [];
+  numbers.forEach(number => {
+    const perMatchStats = dataList.map(d => (d.total || []).find(p => p.number === number) || null);
+    const combined = combineStatsList(perMatchStats);
+    if (!combined) return;
+    list.push({ ...combined, number, name: ROSTER[number] || `#${number}` });
+  });
+  return list;
 }
 
 function combinedTableHtml(stats) {
