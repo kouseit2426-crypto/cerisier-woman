@@ -427,6 +427,16 @@ function dvBuildMatchSlug(matchDate, opponent) {
   return `${dvDateSlug(matchDate)}_${opponent}`;
 }
 
+// 保存形式(DD/MM/YYYY)を、画面表示用に年月日順(YYYY/MM/DD)へ変換する
+function formatMatchDate(matchDate) {
+  const parts = matchDate.split('/');
+  if (parts.length === 3) {
+    const [day, month, year] = parts;
+    return `${year}/${month}/${day}`;
+  }
+  return matchDate;
+}
+
 function dvSplitIntoSets(lines) {
   const sets = [];
   let current = [];
@@ -1370,7 +1380,7 @@ function renderMatchChecklist(matches) {
     cb.checked = selectedMatchKeys.has(matchKey(m));
     cb.addEventListener('change', () => toggleMatchCheckbox(m, cb));
     const span = document.createElement('span');
-    span.textContent = `${m.matchDate} 対 ${m.opponent}`;
+    span.textContent = `${formatMatchDate(m.matchDate)} 対 ${m.opponent}`;
     label.appendChild(cb);
     label.appendChild(span);
     list.appendChild(label);
@@ -1436,7 +1446,7 @@ function showSingleMatch(data) {
   DATA = data;
   document.getElementById('mainArea').style.display = 'block';
   document.getElementById('matchTitle').textContent =
-    `${DATA.teamLabel} 対 ${DATA.opponent}（${DATA.matchDate}）`;
+    `${DATA.teamLabel} 対 ${DATA.opponent}（${formatMatchDate(DATA.matchDate)}）`;
   showRotationTables();
   showSideOutBreakTable();
   showScoreProgressionCharts();
@@ -1474,7 +1484,7 @@ function matchComparisonTableHtml(matches) {
   let html = '<div style="overflow-x:auto"><table class="rotation-table comparison-table">';
   html += '<thead><tr><th>項目</th>';
   matches.forEach(m => {
-    html += `<th>${escapeHtml(m.opponent)}<br><span style="font-weight:400;font-size:12px">${escapeHtml(m.matchDate)}</span></th>`;
+    html += `<th>${escapeHtml(m.opponent)}<br><span style="font-weight:400;font-size:12px">${escapeHtml(formatMatchDate(m.matchDate))}</span></th>`;
   });
   html += '</tr></thead><tbody>';
 
@@ -1549,7 +1559,7 @@ function playerAcrossMatchesTableHtml(number, matches) {
   let html = '<div style="overflow-x:auto"><table class="rotation-table comparison-table">';
   html += '<thead><tr><th>項目</th>';
   matches.forEach(m => {
-    html += `<th>${escapeHtml(m.opponent)}<br><span style="font-weight:400;font-size:12px">${escapeHtml(m.matchDate)}</span></th>`;
+    html += `<th>${escapeHtml(m.opponent)}<br><span style="font-weight:400;font-size:12px">${escapeHtml(formatMatchDate(m.matchDate))}</span></th>`;
   });
   html += '</tr></thead><tbody>';
 
