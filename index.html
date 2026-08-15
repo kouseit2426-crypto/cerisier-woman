@@ -273,6 +273,12 @@
         </thead>
         <tbody id="detailSetBody"></tbody>
       </table>
+
+      <div id="detailRotationSection" style="display:none">
+        <h3 class="section-label">ローテーション別（アタック・全セット合計）</h3>
+        <p class="hint" style="margin-top:-6px">どのローテーションで多く打っているか・決まっているかの目安です。</p>
+        <div id="detailRotationBody"></div>
+      </div>
     </div>
 
     <div class="card" id="detailCard2">
@@ -580,6 +586,84 @@ function dvMergeRotationStats(allSetRotationStats) {
   return total;
 }
 
+// ==================== 選手×ローテーションのアタック集計（誰がどのローテで何本打っているか） ====================
+function dvAnalyzePlayerRotationAttacks(linesInSet, ownMarker) {
+  const result = {};
+  for (let n = 1; n <= 6; n++) result[n] = {};
+  let ownRotationKey = null;
+  let rotationNumber = 1;
+
+  linesInSet.forEach(line => {
+    const fields = line.split(';');
+    const code = fields[0];
+
+    if (fields.length >= 26) {
+      const slice = ownMarker === '*' ? fields.slice(14, 20) : fields.slice(20, 26);
+      const isAllEmpty = slice.every(v => v === '');
+      if (!isAllEmpty) {
+        const key = JSON.stringify(slice);
+        if (ownRotationKey === null) {
+          ownRotationKey = key;
+        } else if (key !== ownRotationKey) {
+          ownRotationKey = key;
+          rotationNumber = (rotationNumber % 6) + 1;
+        }
+      }
+    }
+
+    const m = DV_ACTION_RE.exec(code);
+    if (!m) return;
+    const team = m[1], playerNum = m[2], skill = m[3], evaluation = m[5];
+    if (team !== ownMarker || skill !== 'A') return;
+
+    const number = parseInt(playerNum, 10);
+    const players = result[rotationNumber];
+    if (!players[number]) players[number] = { attempts: 0, points: 0, errors: 0 };
+    const p = players[number];
+    p.attempts += 1;
+    if (evaluation === '#') p.points += 1;
+    else if (evaluation === '=') p.errors += 1;
+  });
+
+  return result;
+}
+
+function dvMergePlayerRotationAttacks(allSetResults) {
+  const total = {};
+  for (let n = 1; n <= 6; n++) total[n] = {};
+  allSetResults.forEach(setResult => {
+    for (let n = 1; n <= 6; n++) {
+      Object.keys(setResult[n]).forEach(numKey => {
+        const number = Number(numKey);
+        const s = setResult[n][numKey];
+        if (!total[n][number]) total[n][number] = { attempts: 0, points: 0, errors: 0 };
+        const t = total[n][number];
+        t.attempts += s.attempts; t.points += s.points; t.errors += s.errors;
+      });
+    }
+  });
+  return total;
+}
+
+function dvBuildPlayerRotationSummary(mergedPlayerRotation) {
+  const numbers = new Set();
+  for (let n = 1; n <= 6; n++) Object.keys(mergedPlayerRotation[n]).forEach(k => numbers.add(Number(k)));
+  const summary = {};
+  numbers.forEach(number => {
+    const rows = [];
+    for (let n = 1; n <= 6; n++) {
+      const s = mergedPlayerRotation[n][number] || { attempts: 0, points: 0, errors: 0 };
+      rows.push({
+        rotation: n,
+        attempts: s.attempts, points: s.points, errors: s.errors,
+        kill_rate: dvRate(s.points, s.attempts),
+      });
+    }
+    summary[number] = rows;
+  });
+  return summary;
+}
+
 function dvRotationSummary(rotationStats) {
   const rows = [];
   const grand = dvEmptyRotationEntry();
@@ -720,17 +804,49 @@ function dvSideOutBreakSummary(r) {
   };
 }
 
+// 得点推移に加えて、その得点/失点に自チームのどの選手が絡んだかも記録する
+// （得点直前の自チームの決定'#'なら得点者、失点直前の自チームのミス'='なら
+// そのミスをした選手、相手のミスでの得点は「相手のミス」として選手なしで扱う）
 function dvAnalyzeScoreProgression(linesInSet, ownMarker) {
-  const points = [{ own: 0, opponent: 0 }];
+  const points = [{ own: 0, opponent: 0, scoringTeam: null, scorerNumber: null, byError: false }];
+  let lastTeam = null, lastNumber = null, lastEval = null;
+
   linesInSet.forEach(line => {
     const code = line.split(';')[0];
-    const m = DV_SCORE_RE.exec(code);
-    if (!m) return;
-    const homeScore = parseInt(m[2], 10);
-    const awayScore = parseInt(m[3], 10);
+
+    const mAction = DV_ACTION_RE.exec(code);
+    if (mAction) {
+      const team = mAction[1], playerNum = mAction[2], evaluation = mAction[5];
+      if (evaluation === '#' || evaluation === '=') {
+        lastTeam = team; lastNumber = parseInt(playerNum, 10); lastEval = evaluation;
+      }
+    }
+
+    const mScore = DV_SCORE_RE.exec(code);
+    if (!mScore) return;
+    const homeScore = parseInt(mScore[2], 10);
+    const awayScore = parseInt(mScore[3], 10);
     const own = ownMarker === '*' ? homeScore : awayScore;
     const opponent = ownMarker === '*' ? awayScore : homeScore;
-    points.push({ own, opponent });
+
+    const prev = points[points.length - 1];
+    let scoringTeam = null, scorerNumber = null, byError = false;
+    if (own > prev.own) {
+      scoringTeam = 'own';
+      if (lastTeam === ownMarker && lastEval === '#') {
+        scorerNumber = lastNumber;
+      } else if (lastTeam !== null && lastTeam !== ownMarker && lastEval === '=') {
+        byError = true;
+      }
+    } else if (opponent > prev.opponent) {
+      scoringTeam = 'opponent';
+      if (lastTeam === ownMarker && lastEval === '=') {
+        scorerNumber = lastNumber;
+        byError = true;
+      }
+    }
+    points.push({ own, opponent, scoringTeam, scorerNumber, byError });
+    lastTeam = null; lastNumber = null; lastEval = null;
   });
   return points;
 }
@@ -795,6 +911,7 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
   const allRotationStats = setsLines.map(s => dvAnalyzeRotationAttacks(s, ownMarker, comboCategories));
   const allSideOutBreak = setsLines.map(s => dvAnalyzeSideOutBreak(s, ownMarker));
   const allSideOutBreakByRotation = setsLines.map(s => dvAnalyzeSideOutBreakByRotation(s, ownMarker));
+  const allPlayerRotationAttacks = setsLines.map(s => dvAnalyzePlayerRotationAttacks(s, ownMarker));
   const allScoreProgression = setsLines.map(s => dvAnalyzeScoreProgression(s, ownMarker));
 
   const numbers = Object.keys(totalStats).map(Number).sort((a, b) => a - b);
@@ -820,6 +937,7 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
     rotation: {
       bySet: allRotationStats.map((rs, i) => ({ setNumber: i + 1, rows: dvRotationSummary(rs) })),
       total: { rows: dvRotationSummary(dvMergeRotationStats(allRotationStats)) },
+      byPlayer: dvBuildPlayerRotationSummary(dvMergePlayerRotationAttacks(allPlayerRotationAttacks)),
     },
     sideOutBreak: {
       bySet: allSideOutBreak.map((r, i) => ({ setNumber: i + 1, ...dvSideOutBreakSummary(r) })),
@@ -1035,7 +1153,7 @@ function markSelected(chipEl) {
   chipEl.classList.add('selected');
 }
 
-function showDetail(name, subLabel, totalStats, setRows) {
+function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
   document.getElementById('detailCard').style.display = 'block';
   document.getElementById('detailCard2').style.display = 'block';
   document.getElementById('detailName').textContent = name;
@@ -1064,6 +1182,14 @@ function showDetail(name, subLabel, totalStats, setRows) {
   });
   if (!setBody.children.length) {
     setBody.innerHTML = '<tr><td colspan="6" class="hint">出場記録がありません</td></tr>';
+  }
+
+  const rotationSection = document.getElementById('detailRotationSection');
+  if (rotationRows && rotationRows.length) {
+    rotationSection.style.display = '';
+    document.getElementById('detailRotationBody').innerHTML = playerRotationTableHtml(rotationRows);
+  } else {
+    rotationSection.style.display = 'none';
   }
 
   const blockLabel = document.getElementById('blockSectionLabel');
@@ -1145,13 +1271,15 @@ function renderSingleMatchPlayerView() {
       document.getElementById('detailTiles').innerHTML = '';
       document.getElementById('detailSetBody').innerHTML =
         '<tr><td colspan="6" class="hint">出場記録がありません</td></tr>';
+      document.getElementById('detailRotationSection').style.display = 'none';
       return;
     }
     const setRows = DATA.sets.map(s => {
       const sp = s.players.find(pp => pp.number === number);
       return sp ? { ...sp, setNumber: s.setNumber } : null;
     });
-    showDetail(p.name, `#${p.number} ／ 全セット合計`, p, setRows);
+    const rotationRows = (DATA.rotation.byPlayer && DATA.rotation.byPlayer[number]) || null;
+    showDetail(p.name, `#${p.number} ／ 全セット合計`, p, setRows, rotationRows);
   } else {
     document.getElementById('detailCard').style.display = 'none';
     document.getElementById('detailCard2').style.display = 'none';
@@ -1187,13 +1315,16 @@ function renderCombinedPlayerView(nums) {
         document.getElementById('detailTiles').innerHTML = '';
         document.getElementById('detailSetBody').innerHTML =
           '<tr><td colspan="6" class="hint">出場記録がありません</td></tr>';
+        document.getElementById('detailRotationSection').style.display = 'none';
         return;
       }
       const rows = entries.map((entry, i) => {
         const sp = perMatchStats[i];
         return sp ? { ...sp, matchLabel: `${formatMatchDate(entry.matchDate)} ${entry.opponent}` } : null;
       });
-      showDetail(name, `#${number} ／ 選んだ${entries.length}試合の合計`, combined, rows);
+      const rotationRowsList = dataList.map(d => (d.rotation.byPlayer && d.rotation.byPlayer[number]) || null);
+      const combinedRotationRows = combinePlayerRotationRows(rotationRowsList);
+      showDetail(name, `#${number} ／ 選んだ${entries.length}試合の合計`, combined, rows, combinedRotationRows);
     } else {
       document.getElementById('detailCard').style.display = 'none';
       document.getElementById('detailCard2').style.display = 'none';
@@ -1423,24 +1554,28 @@ function showScoreProgressionCharts() {
 }
 
 // ==================== セットごとの流れハイライト（連続得点・点差） ====================
+// ラン(連続得点/連続失点)の最大記録を数えつつ、その場面に絡んだ自チームの
+// 選手番号も一緒に記録する（得点に直接絡んだ選手／自チームのミスで失点に
+// 絡んだ選手）。相手のミスによる得点など、選手を特定できない場面は含めない。
 function computeRunHighlights(scoreProgression) {
   const perSet = (scoreProgression.bySet || []).map(s => {
     const pts = s.points || [];
     let lastOwn = 0, lastOpp = 0;
-    let curRunTeam = null, curRunLen = 0;
+    let curRunTeam = null, curRunLen = 0, curRunPlayers = [];
     let bestOwnRun = 0, bestOppRun = 0;
+    let bestOwnRunPlayers = [], bestOppRunPlayers = [];
     pts.forEach((p, i) => {
       if (i === 0) { lastOwn = p.own; lastOpp = p.opponent; return; }
       const ownGained = p.own - lastOwn;
       const oppGained = p.opponent - lastOpp;
       if (ownGained > 0) {
-        curRunLen = (curRunTeam === 'own') ? curRunLen + 1 : 1;
-        curRunTeam = 'own';
-        bestOwnRun = Math.max(bestOwnRun, curRunLen);
+        if (curRunTeam === 'own') { curRunLen += 1; } else { curRunTeam = 'own'; curRunLen = 1; curRunPlayers = []; }
+        if (p.scorerNumber !== null && p.scorerNumber !== undefined) curRunPlayers.push(p.scorerNumber);
+        if (curRunLen > bestOwnRun) { bestOwnRun = curRunLen; bestOwnRunPlayers = curRunPlayers.slice(); }
       } else if (oppGained > 0) {
-        curRunLen = (curRunTeam === 'opp') ? curRunLen + 1 : 1;
-        curRunTeam = 'opp';
-        bestOppRun = Math.max(bestOppRun, curRunLen);
+        if (curRunTeam === 'opp') { curRunLen += 1; } else { curRunTeam = 'opp'; curRunLen = 1; curRunPlayers = []; }
+        if (p.scorerNumber !== null && p.scorerNumber !== undefined) curRunPlayers.push(p.scorerNumber);
+        if (curRunLen > bestOppRun) { bestOppRun = curRunLen; bestOppRunPlayers = curRunPlayers.slice(); }
       }
       lastOwn = p.own; lastOpp = p.opponent;
     });
@@ -1452,34 +1587,57 @@ function computeRunHighlights(scoreProgression) {
       margin: Math.abs(finalOwn - finalOpp),
       won: finalOwn > finalOpp,
       bestOwnRun, bestOppRun,
+      bestOwnRunPlayers, bestOppRunPlayers,
     };
   });
-  let overallBestOwn = { setNumber: null, run: 0 };
-  let overallBestOpp = { setNumber: null, run: 0 };
+  let overallBestOwn = { setNumber: null, run: 0, players: [] };
+  let overallBestOpp = { setNumber: null, run: 0, players: [] };
   perSet.forEach(s => {
-    if (s.bestOwnRun > overallBestOwn.run) overallBestOwn = { setNumber: s.setNumber, run: s.bestOwnRun };
-    if (s.bestOppRun > overallBestOpp.run) overallBestOpp = { setNumber: s.setNumber, run: s.bestOppRun };
+    if (s.bestOwnRun > overallBestOwn.run) overallBestOwn = { setNumber: s.setNumber, run: s.bestOwnRun, players: s.bestOwnRunPlayers };
+    if (s.bestOppRun > overallBestOpp.run) overallBestOpp = { setNumber: s.setNumber, run: s.bestOppRun, players: s.bestOppRunPlayers };
   });
   return { perSet, overallBestOwn, overallBestOpp };
+}
+
+// 選手番号のリストを「菊田(2)、小林」のような表示用文字列にする（登場回数の多い順）
+function formatRunPlayers(numbers) {
+  if (!numbers || !numbers.length) return '';
+  const counts = {};
+  numbers.forEach(n => { counts[n] = (counts[n] || 0) + 1; });
+  return Object.keys(counts).map(Number)
+    .sort((a, b) => counts[b] - counts[a])
+    .map(n => `${ROSTER[n] || '#' + n}${counts[n] > 1 ? `(${counts[n]})` : ''}`)
+    .join('、');
 }
 
 function runHighlightsHtml(scoreProgression) {
   const { perSet, overallBestOwn, overallBestOpp } = computeRunHighlights(scoreProgression);
   if (!perSet.length) return '<p class="hint">データがありません。</p>';
-  let html = '<div class="stat-tiles" style="margin-bottom:14px">';
+  const ownPlayersText = formatRunPlayers(overallBestOwn.players);
+  const oppPlayersText = formatRunPlayers(overallBestOpp.players);
+  let html = '<div class="stat-tiles" style="margin-bottom:6px">';
   html += `<div class="stat-tile"><div class="k">自チーム最大連続得点</div><div class="v">${overallBestOwn.run}点</div></div>`;
   html += `<div class="stat-tile"><div class="k">相手最大連続得点</div><div class="v">${overallBestOpp.run}点</div></div>`;
   html += '</div>';
+  if (ownPlayersText || oppPlayersText) {
+    html += '<p class="hint" style="margin-top:0;margin-bottom:14px">';
+    if (ownPlayersText) html += `自チーム最大連続得点で決めた選手：${escapeHtml(ownPlayersText)}`;
+    if (ownPlayersText && oppPlayersText) html += '　／　';
+    if (oppPlayersText) html += `相手最大連続得点で自チームのミスが絡んだ選手：${escapeHtml(oppPlayersText)}`;
+    html += '</p>';
+  }
   html += '<div style="overflow-x:auto"><table class="rotation-table"><thead><tr>'
     + '<th>セット</th><th>最終スコア</th><th>点差</th><th>結果</th><th>自チーム最大連続</th><th>相手最大連続</th>'
     + '</tr></thead><tbody>';
   perSet.forEach(s => {
+    const ownP = formatRunPlayers(s.bestOwnRunPlayers);
+    const oppP = formatRunPlayers(s.bestOppRunPlayers);
     html += `<tr><td>第${s.setNumber}セット</td>`
       + `<td>${s.finalOwn} - ${s.finalOpp}</td>`
       + `<td>${s.margin}点差</td>`
       + `<td>${s.won ? '○' : '×'}</td>`
-      + `<td>${s.bestOwnRun}点</td>`
-      + `<td>${s.bestOppRun}点</td></tr>`;
+      + `<td>${s.bestOwnRun}点${ownP ? `<br><span class="hint" style="font-size:11px">${escapeHtml(ownP)}</span>` : ''}</td>`
+      + `<td>${s.bestOppRun}点${oppP ? `<br><span class="hint" style="font-size:11px">${escapeHtml(oppP)}</span>` : ''}</td></tr>`;
   });
   html += '</tbody></table></div>';
   return html;
@@ -1843,6 +2001,99 @@ function matchComparisonTableHtml(matches) {
   return html;
 }
 
+// ==================== 選手個人の、試合をまたいだ推移グラフ（決定率・効果率） ====================
+// 調子の波が一目でわかるように、選んだ試合を日付順に並べて折れ線グラフにする。
+// 出場していない試合（記録なし）は線をつながず、点だけ飛ばす。
+function playerTrendChartSvg(number, matches) {
+  const sorted = matches.slice().sort((a, b) => dvDateSlug(a.matchDate).localeCompare(dvDateSlug(b.matchDate)));
+  const points = sorted.map(m => {
+    const p = (m.total || []).find(pp => pp.number === number);
+    const displayDate = formatMatchDate(m.matchDate);
+    const parts = displayDate.split('/');
+    const shortLabel = parts.length === 3 ? `${parts[1]}/${parts[2]}` : displayDate;
+    return {
+      fullLabel: `${displayDate} 対 ${m.opponent}`,
+      shortLabel,
+      kill_rate: p ? p.kill_rate : null,
+      efficiency: p ? p.efficiency : null,
+    };
+  });
+  const values = [];
+  points.forEach(pt => {
+    if (pt.kill_rate !== null && pt.kill_rate !== undefined) values.push(pt.kill_rate);
+    if (pt.efficiency !== null && pt.efficiency !== undefined) values.push(pt.efficiency);
+  });
+  if (values.length < 2) return '<p class="hint">推移グラフを表示するには、出場記録のある試合が2試合以上必要です。</p>';
+
+  const W = 640, H = 220;
+  const padL = 42, padR = 16, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const n = points.length;
+
+  const rawMin = Math.min(0, ...values);
+  const rawMax = Math.max(0, ...values);
+  const span = Math.max(0.1, rawMax - rawMin);
+  const yMin = rawMin - span * 0.15;
+  const yMax = rawMax + span * 0.15;
+
+  const xAt = i => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const yAt = v => padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+
+  let gridSvg = `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${(H - padB).toFixed(1)}" stroke="var(--grid)" stroke-width="1"/>`;
+  if (yMin < 0 && yMax > 0) {
+    const zeroY = yAt(0).toFixed(1);
+    gridSvg += `<line x1="${padL}" y1="${zeroY}" x2="${W - padR}" y2="${zeroY}" stroke="var(--grid)" stroke-width="1"/>`;
+  }
+  gridSvg += `<text x="${(padL - 6).toFixed(1)}" y="${(yAt(yMax) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--text-muted)">${pct(yMax)}</text>`;
+  gridSvg += `<text x="${(padL - 6).toFixed(1)}" y="${(yAt(yMin) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--text-muted)">${pct(yMin)}</text>`;
+
+  function seriesSvg(key, colorVar) {
+    let segHtml = '';
+    let seg = [];
+    points.forEach((pt, i) => {
+      const v = pt[key];
+      if (v === null || v === undefined) {
+        if (seg.length > 1) {
+          segHtml += `<polyline points="${seg.join(' ')}" fill="none" stroke="${colorVar}" `
+            + `stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+        }
+        seg = [];
+        return;
+      }
+      seg.push(`${xAt(i).toFixed(1)},${yAt(v).toFixed(1)}`);
+    });
+    if (seg.length > 1) {
+      segHtml += `<polyline points="${seg.join(' ')}" fill="none" stroke="${colorVar}" `
+        + `stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
+    const dots = points.map((pt, i) => {
+      const v = pt[key];
+      if (v === null || v === undefined) return '';
+      return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="3.5" fill="${colorVar}" `
+        + `stroke="var(--surface-1)" stroke-width="1"><title>${escapeHtml(pt.fullLabel)}: ${pct(v)}</title></circle>`;
+    }).join('');
+    return segHtml + dots;
+  }
+
+  const xLabels = points.map((pt, i) => {
+    const anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+    return `<text x="${xAt(i).toFixed(1)}" y="${H - 8}" text-anchor="${anchor}" font-size="10.5" `
+      + `fill="var(--text-muted)"><title>${escapeHtml(pt.fullLabel)}</title>${escapeHtml(pt.shortLabel)}</text>`;
+  }).join('');
+
+  return `<div class="score-chart">`
+    + `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">`
+    + gridSvg
+    + seriesSvg('kill_rate', 'var(--series-blue)')
+    + seriesSvg('efficiency', 'var(--series-orange)')
+    + xLabels
+    + `</svg>`
+    + `<div class="score-chart-legend">`
+    + `<span class="legend-item"><span class="legend-swatch" style="background:var(--series-blue)"></span>決定率</span>`
+    + `<span class="legend-item"><span class="legend-swatch" style="background:var(--series-orange)"></span>効果率</span>`
+    + `</div></div>`;
+}
+
 function playerAcrossMatchesTableHtml(number, matches) {
   const colspan = matches.length + 1;
   const statsList = matches.map(m => (m.total || []).find(pp => pp.number === number) || null);
@@ -1985,6 +2236,41 @@ function combineRotationRows(rowsList) {
   return rows;
 }
 
+// 選手個人の「ローテーション別のアタック出場状況」の表
+function playerRotationTableHtml(rows) {
+  const withAttempts = (rows || []).filter(r => r.attempts > 0);
+  if (!withAttempts.length) return '<p class="hint">この選手のアタック出場記録がありません。</p>';
+  let html = '<div style="overflow-x:auto"><table class="rotation-table"><thead><tr>'
+    + '<th>ローテ</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th>'
+    + '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += `<tr><td>S${r.rotation}</td><td>${r.attempts}</td><td>${r.points}</td><td>${r.errors}</td><td>${pct(r.kill_rate)}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// 選手個人の「ローテーション別のアタック出場状況」を、選んだ試合分すべてで足し合わせる
+function combinePlayerRotationRows(rowsList) {
+  const valid = rowsList.filter(r => r && r.length);
+  if (!valid.length) return [];
+  const rows = [];
+  for (let i = 0; i < 6; i++) {
+    const sum = { attempts: 0, points: 0, errors: 0 };
+    valid.forEach(rowsForMatch => {
+      const r = rowsForMatch[i];
+      if (!r) return;
+      sum.attempts += r.attempts; sum.points += r.points; sum.errors += r.errors;
+    });
+    rows.push({
+      rotation: valid[0][i].rotation,
+      attempts: sum.attempts, points: sum.points, errors: sum.errors,
+      kill_rate: dvRate(sum.points, sum.attempts),
+    });
+  }
+  return rows;
+}
+
 // ローテーション別のサイドアウト率・ブレイク率を、選んだ試合分すべてで足し合わせる
 function combineSideOutBreakByRotation(byRotationList) {
   const valid = byRotationList.filter(r => r && r.length);
@@ -2107,7 +2393,9 @@ function showMatchComparison(matches) {
 
   Array.from(selectedPlayerNumbers).forEach(number => {
     const name = ROSTER[number] || `#${number}`;
-    let playerHtml = '<h4 class="section-label" style="margin-top:0;font-size:15px">試合ごとの比較</h4>';
+    let playerHtml = '<h4 class="section-label" style="margin-top:0;font-size:15px">試合をまたいだ推移（決定率・効果率）</h4>';
+    playerHtml += playerTrendChartSvg(number, matches);
+    playerHtml += '<h4 class="section-label" style="font-size:15px">試合ごとの比較</h4>';
     playerHtml += playerAcrossMatchesTableHtml(number, matches);
     const playerStatsList = matches.map(m => (m.total || []).find(pp => pp.number === number) || null);
     const combinedPlayer = combineStatsList(playerStatsList);
