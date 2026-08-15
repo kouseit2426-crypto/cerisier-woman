@@ -17,6 +17,7 @@
     --border:         rgba(11,11,11,0.10);
     --series-blue:    #2a78d6;
     --series-orange:  #eb6834;
+    --series-green:   #1a9e77;
   }
   @media (prefers-color-scheme: dark) {
     .viz-root {
@@ -31,6 +32,7 @@
       --border:         rgba(255,255,255,0.10);
       --series-blue:    #3987e5;
       --series-orange:  #d95926;
+      --series-green:   #1a9e6f;
     }
   }
 
@@ -148,6 +150,8 @@
   .accordion-toggle:hover { background: var(--grid); }
   .accordion-toggle .arrow { color: var(--text-muted); font-size: 12px; flex-shrink: 0; }
   .accordion-body { padding: 16px 2px 4px; }
+  .rank-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .rank-grid h4 { margin: 0 0 8px; font-size: 14px; }
 
   .page { display: none; }
   .page.active { display: block; }
@@ -241,6 +245,13 @@
   </div>
 
   <div class="main-content">
+  <div class="card" id="seasonTrendCard" style="display:none">
+    <h3 class="section-label" style="margin-top:0">シーズンの推移（試合ごと）</h3>
+    <p class="hint" style="margin-top:-6px">
+      これまでの試合を古い順に並べて、決定率・サイドアウト率・ブレイク率の変化を見られます。試合が2つ以上あると表示されます。
+    </p>
+    <div id="seasonTrendBody"></div>
+  </div>
   <div class="card" id="matchComparisonCard" style="display:none">
     <div class="detail-header">
       <h2 id="matchComparisonTitle"></h2>
@@ -291,6 +302,14 @@
       <p class="hint" style="margin-top:-6px">選手を2人以上選ぶと、ここに並べて比較表示されます。もう一度チップを押すと選択解除できます。</p>
       <div id="comparisonBody"></div>
     </div>
+
+    <div class="card" id="leaderboardCard">
+      <h3 class="section-label" style="margin-top:0">選手ランキング（この試合）</h3>
+      <p class="hint" style="margin-top:-6px">
+        規定本数（3本）以上の選手が対象です。
+      </p>
+      <div id="leaderboardBody"></div>
+    </div>
   </div>
 
   <div class="page" id="page2">
@@ -301,6 +320,11 @@
       </p>
       <div class="player-grid" id="sideOutBreakSetButtons"></div>
       <div class="stat-tiles" id="sideOutBreakTiles" style="margin-top:16px"></div>
+      <h3 class="section-label" id="sideOutBreakByRotationLabel">ローテーション別（全セット合計）</h3>
+      <p class="hint" style="margin-top:-6px">
+        どのローテーションで失点しやすいか・得点しやすいかの目安です。
+      </p>
+      <div id="sideOutBreakByRotationBody"></div>
     </div>
 
     <div class="card" id="scoreProgressionCard">
@@ -310,6 +334,8 @@
       </p>
       <div class="player-grid" id="scoreProgressionSetButtons"></div>
       <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
+      <h3 class="section-label" id="runHighlightsLabel">セットごとの流れハイライト</h3>
+      <div id="runHighlightsBody"></div>
     </div>
 
     <div class="card" id="rotationCard">
@@ -636,6 +662,62 @@ function dvMergeSideOutBreak(allSetResults) {
   return total;
 }
 
+function dvAnalyzeSideOutBreakByRotation(linesInSet, ownMarker) {
+  const result = {};
+  for (let n = 1; n <= 6; n++) result[n] = { serve_total: 0, serve_wins: 0, receive_total: 0, receive_wins: 0 };
+  let ownRotationKey = null;
+  let rotationNumber = 1;
+  let currentServer = null;
+
+  linesInSet.forEach(line => {
+    const fields = line.split(';');
+    const code = fields[0];
+
+    if (fields.length >= 26) {
+      const slice = ownMarker === '*' ? fields.slice(14, 20) : fields.slice(20, 26);
+      const isAllEmpty = slice.every(v => v === '');
+      if (!isAllEmpty) {
+        const key = JSON.stringify(slice);
+        if (ownRotationKey === null) {
+          ownRotationKey = key;
+        } else if (key !== ownRotationKey) {
+          ownRotationKey = key;
+          rotationNumber = (rotationNumber % 6) + 1;
+        }
+      }
+    }
+
+    const mAction = DV_ACTION_RE.exec(code);
+    if (mAction && mAction[3] === 'S') currentServer = mAction[1];
+
+    const mScore = DV_SCORE_RE.exec(code);
+    if (mScore && currentServer !== null) {
+      const scorer = mScore[1];
+      const entry = result[rotationNumber];
+      if (currentServer === ownMarker) {
+        entry.serve_total += 1;
+        if (scorer === ownMarker) entry.serve_wins += 1;
+      } else {
+        entry.receive_total += 1;
+        if (scorer === ownMarker) entry.receive_wins += 1;
+      }
+    }
+  });
+
+  return result;
+}
+
+function dvMergeSideOutBreakByRotation(allSetResults) {
+  const total = {};
+  for (let n = 1; n <= 6; n++) total[n] = { serve_total: 0, serve_wins: 0, receive_total: 0, receive_wins: 0 };
+  allSetResults.forEach(setResult => {
+    for (let n = 1; n <= 6; n++) {
+      Object.keys(total[n]).forEach(k => { total[n][k] += setResult[n][k]; });
+    }
+  });
+  return total;
+}
+
 function dvSideOutBreakSummary(r) {
   return {
     serve_total: r.serve_total,
@@ -721,6 +803,7 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
   const totalStats = dvMergeStats(allSetStats);
   const allRotationStats = setsLines.map(s => dvAnalyzeRotationAttacks(s, ownMarker, comboCategories));
   const allSideOutBreak = setsLines.map(s => dvAnalyzeSideOutBreak(s, ownMarker));
+  const allSideOutBreakByRotation = setsLines.map(s => dvAnalyzeSideOutBreakByRotation(s, ownMarker));
   const allScoreProgression = setsLines.map(s => dvAnalyzeScoreProgression(s, ownMarker));
 
   const numbers = Object.keys(totalStats).map(Number).sort((a, b) => a - b);
@@ -750,6 +833,12 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
     sideOutBreak: {
       bySet: allSideOutBreak.map((r, i) => ({ setNumber: i + 1, ...dvSideOutBreakSummary(r) })),
       total: dvSideOutBreakSummary(dvMergeSideOutBreak(allSideOutBreak)),
+      byRotation: (() => {
+        const merged = dvMergeSideOutBreakByRotation(allSideOutBreakByRotation);
+        const rows = [];
+        for (let n = 1; n <= 6; n++) rows.push({ rotation: n, ...dvSideOutBreakSummary(merged[n]) });
+        return rows;
+      })(),
     },
     scoreProgression: {
       bySet: allScoreProgression.map((points, i) => ({ setNumber: i + 1, points })),
@@ -1253,6 +1342,88 @@ function scoreChartSvg(points, title, ownLabel, opponentLabel) {
        + `</div></div>`;
 }
 
+// ==================== シーズンの推移（試合をまたいだ折れ線グラフ） ====================
+function percentTrendChartSvg(series, labels, fullLabels) {
+  // series: [{ key, label, colorVar, values: [0-1 or null, ...] }]
+  // labels: 軸に出す短い日付表示。fullLabels: ツールチップ用の詳しい表示(省略時はlabelsを使う)
+  fullLabels = fullLabels || labels;
+  const W = 640, H = 270;
+  const padL = 40, padR = 40, padT = 14, padB = 56;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const n = labels.length;
+  const xAt = i => padL + (n <= 1 ? 0 : (i / (n - 1)) * plotW);
+  const yAt = v => padT + plotH - v * plotH;
+
+  let gridSvg = '';
+  for (let t = 0; t <= 100; t += 25) {
+    const y = yAt(t / 100);
+    gridSvg += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" `
+             + `stroke="var(--grid)" stroke-width="1"/>`;
+    gridSvg += `<text x="${padL - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="11" `
+             + `fill="var(--text-muted)">${t}%</text>`;
+  }
+  let xLabelsSvg = '';
+  labels.forEach((label, i) => {
+    const anchor = i === 0 ? 'start' : (i === labels.length - 1 ? 'end' : 'middle');
+    const x = i === 0 ? xAt(i) - 14 : (i === labels.length - 1 ? xAt(i) + 14 : xAt(i));
+    xLabelsSvg += `<text x="${x.toFixed(1)}" y="${H - padB + 18}" text-anchor="${anchor}" font-size="11" `
+                + `fill="var(--text-muted)"><title>${escapeHtml(fullLabels[i])}</title>${escapeHtml(label)}</text>`;
+  });
+
+  function seriesSvg(s) {
+    const pointsWithIdx = s.values.map((v, i) => ({ v, i })).filter(p => p.v !== null && p.v !== undefined);
+    if (!pointsWithIdx.length) return '';
+    const coords = pointsWithIdx.map(p => `${xAt(p.i).toFixed(1)},${yAt(p.v).toFixed(1)}`).join(' ');
+    const dots = pointsWithIdx.map(p => {
+      const cx = xAt(p.i).toFixed(1), cy = yAt(p.v).toFixed(1);
+      return `<circle cx="${cx}" cy="${cy}" r="3.5" fill="${s.colorVar}" stroke="var(--surface-1)" `
+           + `stroke-width="1"><title>${escapeHtml(fullLabels[p.i])}: ${pct(p.v)}</title></circle>`;
+    }).join('');
+    return `<polyline points="${coords}" fill="none" stroke="${s.colorVar}" stroke-width="2" `
+         + `stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
+  }
+
+  const legend = series.map(s =>
+    `<span class="legend-item"><span class="legend-swatch" style="background:${s.colorVar}"></span>${escapeHtml(s.label)}</span>`
+  ).join('');
+
+  return `<div class="score-chart">`
+       + `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">`
+       + gridSvg + xLabelsSvg
+       + series.map(seriesSvg).join('')
+       + `</svg>`
+       + `<div class="score-chart-legend">${legend}</div>`
+       + `</div>`;
+}
+
+function renderSeasonTrend() {
+  const card = document.getElementById('seasonTrendCard');
+  const body = document.getElementById('seasonTrendBody');
+  if (!MATCHES || MATCHES.length < 2) {
+    card.style.display = 'none';
+    return;
+  }
+  const sorted = [...MATCHES].sort((a, b) => dvDateSlug(a.matchDate) < dvDateSlug(b.matchDate) ? -1 : 1);
+  Promise.all(sorted.map(fetchMatchData)).then(dataList => {
+    const shortLabels = sorted.map(m => {
+      const parts = formatMatchDate(m.matchDate).split('/');
+      return parts.length === 3 ? `${parts[1]}/${parts[2]}` : formatMatchDate(m.matchDate);
+    });
+    const fullLabels = sorted.map(m => `${formatMatchDate(m.matchDate)} 対 ${m.opponent}`);
+    const killRates = dataList.map(d => d.team && d.team.total ? d.team.total.kill_rate : null);
+    const sideOutRates = dataList.map(d => d.sideOutBreak && d.sideOutBreak.total ? d.sideOutBreak.total.side_out_rate : null);
+    const breakRates = dataList.map(d => d.sideOutBreak && d.sideOutBreak.total ? d.sideOutBreak.total.break_rate : null);
+    const series = [
+      { key: 'kill_rate', label: '決定率', colorVar: 'var(--series-blue)', values: killRates },
+      { key: 'side_out_rate', label: 'サイドアウト率', colorVar: 'var(--series-orange)', values: sideOutRates },
+      { key: 'break_rate', label: 'ブレイク率', colorVar: 'var(--series-green)', values: breakRates },
+    ];
+    body.innerHTML = percentTrendChartSvg(series, shortLabels, fullLabels);
+    card.style.display = 'block';
+  });
+}
+
 function selectScoreProgressionSet(s, chipEl) {
   document.querySelectorAll('#scoreProgressionSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
   chipEl.classList.add('selected');
@@ -1278,6 +1449,70 @@ function showScoreProgressionCharts() {
   } else {
     chartEl.innerHTML = '';
   }
+  document.getElementById('runHighlightsBody').innerHTML = runHighlightsHtml(DATA.scoreProgression);
+}
+
+// ==================== セットごとの流れハイライト（連続得点・点差） ====================
+function computeRunHighlights(scoreProgression) {
+  const perSet = (scoreProgression.bySet || []).map(s => {
+    const pts = s.points || [];
+    let lastOwn = 0, lastOpp = 0;
+    let curRunTeam = null, curRunLen = 0;
+    let bestOwnRun = 0, bestOppRun = 0;
+    pts.forEach((p, i) => {
+      if (i === 0) { lastOwn = p.own; lastOpp = p.opponent; return; }
+      const ownGained = p.own - lastOwn;
+      const oppGained = p.opponent - lastOpp;
+      if (ownGained > 0) {
+        curRunLen = (curRunTeam === 'own') ? curRunLen + 1 : 1;
+        curRunTeam = 'own';
+        bestOwnRun = Math.max(bestOwnRun, curRunLen);
+      } else if (oppGained > 0) {
+        curRunLen = (curRunTeam === 'opp') ? curRunLen + 1 : 1;
+        curRunTeam = 'opp';
+        bestOppRun = Math.max(bestOppRun, curRunLen);
+      }
+      lastOwn = p.own; lastOpp = p.opponent;
+    });
+    const finalOwn = pts.length ? pts[pts.length - 1].own : 0;
+    const finalOpp = pts.length ? pts[pts.length - 1].opponent : 0;
+    return {
+      setNumber: s.setNumber,
+      finalOwn, finalOpp,
+      margin: Math.abs(finalOwn - finalOpp),
+      won: finalOwn > finalOpp,
+      bestOwnRun, bestOppRun,
+    };
+  });
+  let overallBestOwn = { setNumber: null, run: 0 };
+  let overallBestOpp = { setNumber: null, run: 0 };
+  perSet.forEach(s => {
+    if (s.bestOwnRun > overallBestOwn.run) overallBestOwn = { setNumber: s.setNumber, run: s.bestOwnRun };
+    if (s.bestOppRun > overallBestOpp.run) overallBestOpp = { setNumber: s.setNumber, run: s.bestOppRun };
+  });
+  return { perSet, overallBestOwn, overallBestOpp };
+}
+
+function runHighlightsHtml(scoreProgression) {
+  const { perSet, overallBestOwn, overallBestOpp } = computeRunHighlights(scoreProgression);
+  if (!perSet.length) return '<p class="hint">データがありません。</p>';
+  let html = '<div class="stat-tiles" style="margin-bottom:14px">';
+  html += `<div class="stat-tile"><div class="k">自チーム最大連続得点</div><div class="v">${overallBestOwn.run}点</div></div>`;
+  html += `<div class="stat-tile"><div class="k">相手最大連続得点</div><div class="v">${overallBestOpp.run}点</div></div>`;
+  html += '</div>';
+  html += '<div style="overflow-x:auto"><table class="rotation-table"><thead><tr>'
+    + '<th>セット</th><th>最終スコア</th><th>点差</th><th>結果</th><th>自チーム最大連続</th><th>相手最大連続</th>'
+    + '</tr></thead><tbody>';
+  perSet.forEach(s => {
+    html += `<tr><td>第${s.setNumber}セット</td>`
+      + `<td>${s.finalOwn} - ${s.finalOpp}</td>`
+      + `<td>${s.margin}点差</td>`
+      + `<td>${s.won ? '○' : '×'}</td>`
+      + `<td>${s.bestOwnRun}点</td>`
+      + `<td>${s.bestOppRun}点</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  return html;
 }
 
 function selectRotationSet(rows, chipEl) {
@@ -1339,6 +1574,24 @@ function showSideOutBreakTable() {
   });
   const last = items[items.length - 1];
   selectSideOutBreakSet(last.data, btnEl.children[items.length - 1]);
+  document.getElementById('sideOutBreakByRotationBody').innerHTML = sideOutBreakByRotationHtml(DATA.sideOutBreak.byRotation || []);
+}
+
+// ==================== ローテーション別のサイドアウト率・ブレイク率 ====================
+function sideOutBreakByRotationHtml(rows) {
+  if (!rows.length) return '<p class="hint">このデータはまだありません（この試合を追加した時点では未対応でした）。</p>';
+  let html = '<div style="overflow-x:auto"><table class="rotation-table"><thead><tr>'
+    + '<th>ローテ</th><th>サーブ本数</th><th>ブレイク率</th><th>レシーブ本数</th><th>サイドアウト率</th>'
+    + '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += `<tr><td>S${r.rotation}</td>`
+      + `<td>${r.serve_total}</td>`
+      + `<td>${pct(r.break_rate)}</td>`
+      + `<td>${r.receive_total}</td>`
+      + `<td>${pct(r.side_out_rate)}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  return html;
 }
 
 function showPage(n) {
@@ -1452,6 +1705,33 @@ function showSingleMatch(data) {
   showScoreProgressionCharts();
   showPage(1);
   renderSingleMatchPlayerView();
+  document.getElementById('leaderboardBody').innerHTML = playerLeaderboardHtml(DATA.total || []);
+}
+
+// ==================== 選手ランキング（規定本数以上の選手が対象） ====================
+function playerLeaderboardHtml(players) {
+  const MIN_ATTEMPTS = 3;
+  function topList(list, key, minKey) {
+    return list
+      .filter(p => (p[minKey] || 0) >= MIN_ATTEMPTS && p[key] !== null && p[key] !== undefined)
+      .sort((a, b) => b[key] - a[key])
+      .slice(0, 5);
+  }
+  function rowsHtml(list, key) {
+    if (!list.length) return '<p class="hint">規定本数（' + MIN_ATTEMPTS + '本）以上の選手がいません。</p>';
+    return '<table class="rotation-table"><thead><tr><th>順位</th><th>選手</th><th>値</th></tr></thead><tbody>'
+      + list.map((p, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${pct(p[key])}</td></tr>`).join('')
+      + '</tbody></table>';
+  }
+  const byKill = topList(players, 'kill_rate', 'attempts');
+  const byServe = topList(players, 'serve_efficiency', 'serve_attempts');
+  const byReceive = topList(players, 'receive_a_rate', 'receive_attempts');
+
+  return '<div class="rank-grid">'
+    + `<div><h4>アタック決定率</h4>${rowsHtml(byKill, 'kill_rate')}</div>`
+    + `<div><h4>サーブ効果率</h4>${rowsHtml(byServe, 'serve_efficiency')}</div>`
+    + `<div><h4>レシーブA率</h4>${rowsHtml(byReceive, 'receive_a_rate')}</div>`
+    + '</div>';
 }
 
 function computeSetScoreSummary(scoreProgression) {
@@ -1769,6 +2049,7 @@ fetch('matches.json')
     selectedMatchKeys.add(matchKey(matches[0]));
     renderMatchChecklist(matches);
     renderMatchSelection();
+    renderSeasonTrend();
   });
 </script>
 </body>
