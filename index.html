@@ -1297,6 +1297,7 @@ function selectTeam(chipEl) {
   selectedPlayerNumbers.clear();
   document.querySelectorAll('#playerChecklist input[type="checkbox"]').forEach(cb => { cb.checked = false; });
   updatePlayerListToggleLabel();
+  clearDropZoneStatus();
   markSelected(chipEl);
   document.getElementById('comparisonCard').style.display = 'none';
   showDetail(DATA.team.name, 'チーム合計 ／ 全セット合計', DATA.team.total, DATA.team.sets);
@@ -1396,7 +1397,13 @@ function toggleMatchCheckbox(entry, cbEl) {
     selectedMatchKeys.delete(key);
   }
   updateMatchListToggleLabel();
+  clearDropZoneStatus();
   renderMatchSelection();
+}
+
+function clearDropZoneStatus() {
+  const statusEl = document.getElementById('dropZoneStatus');
+  if (statusEl) statusEl.innerHTML = '';
 }
 
 function renderMatchSelection() {
