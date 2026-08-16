@@ -370,6 +370,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
       <h3 class="section-label" id="receiveSectionLabel">レシーブ（全セット合計）</h3>
       <div class="stat-tiles" id="receiveTiles"></div>
+
+      <p class="hint" id="errorBreakdownLine" style="display:none;margin-top:16px;margin-bottom:0"></p>
     </div>
 
     <div class="card" id="comparisonCard">
@@ -409,6 +411,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         どのローテーションで失点しやすいか・得点しやすいかの目安です。
       </p>
       <div id="sideOutBreakByRotationBody"></div>
+      <p class="hint" id="rotationInsightLine" style="margin-top:12px"></p>
+    </div>
+
+    <div class="card" id="scoringPatternCard">
+      <h3 class="section-label" style="margin-top:0">得点パターン（チーム全体）</h3>
+      <p class="hint" style="margin-top:-6px">
+        自チームがどうやって得点し、どうやって失点しているかの内訳です。「相手ミス」「自チームミス」は、
+        自分たちの決定力・安定感がどれくらい得点に影響しているかの目安になります。
+      </p>
+      <div id="scoringPatternBody"></div>
     </div>
 
     <div class="card" id="scoreProgressionCard">
@@ -450,6 +462,9 @@ const COMBO_CATEGORY_MAP = { F: 'left', B: 'right', C: 'middle', P: 'pipe' };
 
 const DV_SCORE_RE = /^([*a])p(\d+):(\d+)/;
 const DV_ACTION_RE = /^([*a])(\d\d)([ABSR])([A-Za-z])([#+\-!=/])([A-Z0-9]{2})?/;
+// 得点パターン集計専用：ディグ(D)・セット(E)・フリーボール(F)も含めた「全スキル」版。
+// ディグミスなどでラリーが終わるケースも取りこぼさずに拾うため、DV_ACTION_REとは別に用意している。
+const DV_ACTION_ANY_SKILL_RE = /^([*a])(\d\d)([A-Z])([A-Za-z])([#+\-!=/])([A-Z0-9]{2})?/;
 
 function dvRate(numerator, denominator) {
   if (!denominator) return null;
@@ -895,17 +910,17 @@ function dvSideOutBreakSummary(r) {
 // （得点直前の自チームの決定'#'なら得点者、失点直前の自チームのミス'='なら
 // そのミスをした選手、相手のミスでの得点は「相手のミス」として選手なしで扱う）
 function dvAnalyzeScoreProgression(linesInSet, ownMarker) {
-  const points = [{ own: 0, opponent: 0, scoringTeam: null, scorerNumber: null, byError: false }];
-  let lastTeam = null, lastNumber = null, lastEval = null;
+  const points = [{ own: 0, opponent: 0, scoringTeam: null, scorerNumber: null, byError: false, skill: null }];
+  let lastTeam = null, lastNumber = null, lastEval = null, lastSkill = null;
 
   linesInSet.forEach(line => {
     const code = line.split(';')[0];
 
-    const mAction = DV_ACTION_RE.exec(code);
+    const mAction = DV_ACTION_ANY_SKILL_RE.exec(code);
     if (mAction) {
-      const team = mAction[1], playerNum = mAction[2], evaluation = mAction[5];
+      const team = mAction[1], playerNum = mAction[2], skill = mAction[3], evaluation = mAction[5];
       if (evaluation === '#' || evaluation === '=') {
-        lastTeam = team; lastNumber = parseInt(playerNum, 10); lastEval = evaluation;
+        lastTeam = team; lastNumber = parseInt(playerNum, 10); lastEval = evaluation; lastSkill = skill;
       }
     }
 
@@ -917,23 +932,28 @@ function dvAnalyzeScoreProgression(linesInSet, ownMarker) {
     const opponent = ownMarker === '*' ? awayScore : homeScore;
 
     const prev = points[points.length - 1];
-    let scoringTeam = null, scorerNumber = null, byError = false;
+    let scoringTeam = null, scorerNumber = null, byError = false, skillUsed = null;
     if (own > prev.own) {
       scoringTeam = 'own';
       if (lastTeam === ownMarker && lastEval === '#') {
         scorerNumber = lastNumber;
+        skillUsed = lastSkill;
       } else if (lastTeam !== null && lastTeam !== ownMarker && lastEval === '=') {
         byError = true;
+        skillUsed = lastSkill;
       }
     } else if (opponent > prev.opponent) {
       scoringTeam = 'opponent';
       if (lastTeam === ownMarker && lastEval === '=') {
         scorerNumber = lastNumber;
         byError = true;
+        skillUsed = lastSkill;
+      } else if (lastTeam !== null && lastTeam !== ownMarker && lastEval === '#') {
+        skillUsed = lastSkill;
       }
     }
-    points.push({ own, opponent, scoringTeam, scorerNumber, byError });
-    lastTeam = null; lastNumber = null; lastEval = null;
+    points.push({ own, opponent, scoringTeam, scorerNumber, byError, skill: skillUsed });
+    lastTeam = null; lastNumber = null; lastEval = null; lastSkill = null;
   });
   return points;
 }
@@ -1350,6 +1370,21 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
   } else {
     receiveLabel.style.display = 'none';
     receiveTiles.style.display = 'none';
+  }
+
+  // ミスの内訳（控えめに一行だけ。派手な表やグラフにはしない）
+  const errBreakdownEl = document.getElementById('errorBreakdownLine');
+  const errParts = [
+    ['アタック', totalStats.errors],
+    ['サーブ', totalStats.serve_errors],
+    ['レシーブ', totalStats.receive_errors],
+    ['ブロック', totalStats.block_errors],
+  ].filter(([, v]) => v);
+  if (errParts.length) {
+    errBreakdownEl.style.display = '';
+    errBreakdownEl.textContent = 'ミスの内訳： ' + errParts.map(([k, v]) => `${k}${v}`).join('／');
+  } else {
+    errBreakdownEl.style.display = 'none';
   }
 }
 
@@ -1866,6 +1901,9 @@ function showSideOutBreakTable() {
   const last = items[items.length - 1];
   selectSideOutBreakSet(last.data, btnEl.children[items.length - 1]);
   document.getElementById('sideOutBreakByRotationBody').innerHTML = sideOutBreakByRotationHtml(DATA.sideOutBreak.byRotation || []);
+  const insight = rotationInsightText(DATA.sideOutBreak.byRotation || []);
+  document.getElementById('rotationInsightLine').style.display = insight ? '' : 'none';
+  document.getElementById('rotationInsightLine').textContent = insight;
 }
 
 // 試合を2つ以上選んでいるときは、セットごとの切り替えはせず、選んだ試合すべての合計を1つ表示する
@@ -1884,6 +1922,93 @@ function showSideOutBreakTableCombined(entries, dataList) {
     + `<div class="stat-tile"><div class="k">サイドアウト率</div><div class="v">${pct(combinedTotal.side_out_rate)}</div></div>`;
   const combinedByRotation = combineSideOutBreakByRotation(dataList.map(d => d.sideOutBreak.byRotation || []));
   document.getElementById('sideOutBreakByRotationBody').innerHTML = sideOutBreakByRotationHtml(combinedByRotation);
+  const insight = rotationInsightText(combinedByRotation);
+  document.getElementById('rotationInsightLine').style.display = insight ? '' : 'none';
+  document.getElementById('rotationInsightLine').textContent = insight;
+}
+
+// ==================== 得点パターン（どうやって得点し、どうやって失点しているか） ====================
+// 得点推移(scoreProgression)のpointsには、得点/失点のたびに「決定(#)かミス(=)か」と
+// 「どのスキル(サーブ/アタック/ブロック)で決まったか」が記録されている。それを集計して、
+// 自チームの得点は アタック決定／サーブエース／ブロック得点／相手ミス の4種類に、
+// 失点は 被決定／被サーブエース／被ブロック／自チームミス の4種類に振り分ける。
+function computeScoringPattern(bySetList) {
+  const counts = {
+    ownKill: 0, ownAce: 0, ownBlock: 0, opponentError: 0,
+    oppKill: 0, oppAce: 0, oppBlock: 0, ownError: 0,
+  };
+  let trueOwnTotal = 0, trueOppTotal = 0;
+  (bySetList || []).forEach(s => {
+    const pts = (s && s.points) || [];
+    pts.forEach(pt => {
+      if (pt.scoringTeam === 'own') {
+        if (pt.byError) counts.opponentError += 1;
+        else if (pt.skill === 'S') counts.ownAce += 1;
+        else if (pt.skill === 'A') counts.ownKill += 1;
+        else if (pt.skill === 'B') counts.ownBlock += 1;
+      } else if (pt.scoringTeam === 'opponent') {
+        if (pt.byError) counts.ownError += 1;
+        else if (pt.skill === 'S') counts.oppAce += 1;
+        else if (pt.skill === 'A') counts.oppKill += 1;
+        else if (pt.skill === 'B') counts.oppBlock += 1;
+      }
+    });
+    if (pts.length) {
+      const last = pts[pts.length - 1];
+      trueOwnTotal += last.own;
+      trueOppTotal += last.opponent;
+    }
+  });
+  return { counts, trueOwnTotal, trueOppTotal };
+}
+
+function scoringPatternHtml(pattern) {
+  const c = pattern.counts;
+  const ownTotal = pattern.trueOwnTotal, oppTotal = pattern.trueOppTotal;
+  if (!ownTotal && !oppTotal) {
+    return '<p class="hint">このデータはまだありません（この試合を追加した時点では未対応でした）。</p>';
+  }
+  const tile = (label, val, total) =>
+    `<div class="stat-tile"><div class="k">${label}</div><div class="v">${val}<br><span style="font-size:12px;font-weight:400">${pct(dvRate(val, total))}</span></div></div>`;
+  let html = `<h3 class="section-label" style="margin-top:0">得点（合計${ownTotal}点）</h3>`;
+  html += '<div class="stat-tiles">'
+    + tile('アタック決定', c.ownKill, ownTotal)
+    + tile('サーブエース', c.ownAce, ownTotal)
+    + tile('ブロック得点', c.ownBlock, ownTotal)
+    + tile('相手ミス', c.opponentError, ownTotal)
+    + '</div>';
+  html += `<h3 class="section-label">失点（合計${oppTotal}点）</h3>`;
+  html += '<div class="stat-tiles">'
+    + tile('被決定', c.oppKill, oppTotal)
+    + tile('被サーブエース', c.oppAce, oppTotal)
+    + tile('被ブロック', c.oppBlock, oppTotal)
+    + tile('自チームミス', c.ownError, oppTotal)
+    + '</div>';
+  return html;
+}
+
+// ローテーションごとのサイドアウト率・ブレイク率を見て、一番目立つ差だけを
+// 控えめな一文にする（本数が少なすぎるローテは、たまたまの数字になりやすいので対象外にする）
+function rotationInsightText(rows) {
+  const MIN = 3;
+  const parts = [];
+  const soRows = rows.filter(r => r.receive_total >= MIN && r.side_out_rate !== null && r.side_out_rate !== undefined);
+  if (soRows.length >= 2) {
+    const best = soRows.reduce((a, b) => (b.side_out_rate > a.side_out_rate ? b : a));
+    const worst = soRows.reduce((a, b) => (b.side_out_rate < a.side_out_rate ? b : a));
+    if (best.rotation !== worst.rotation) {
+      parts.push(`サイドアウト率はS${best.rotation}が最も高く(${pct(best.side_out_rate)})、S${worst.rotation}が最も低い(${pct(worst.side_out_rate)})`);
+    }
+  }
+  const brRows = rows.filter(r => r.serve_total >= MIN && r.break_rate !== null && r.break_rate !== undefined);
+  if (brRows.length >= 2) {
+    const best = brRows.reduce((a, b) => (b.break_rate > a.break_rate ? b : a));
+    const worst = brRows.reduce((a, b) => (b.break_rate < a.break_rate ? b : a));
+    if (best.rotation !== worst.rotation) {
+      parts.push(`ブレイク率はS${best.rotation}が最も高く(${pct(best.break_rate)})、S${worst.rotation}が最も低い(${pct(worst.break_rate)})`);
+    }
+  }
+  return parts.length ? '注目ポイント： ' + parts.join('／') : '';
 }
 
 // ==================== ローテーション別のサイドアウト率・ブレイク率 ====================
@@ -2025,6 +2150,8 @@ function showSingleMatch(data, entries, dataList) {
     showRotationTables();
     showSideOutBreakTable();
   }
+  const bySetForPattern = combined ? dataList.flatMap(d => d.scoreProgression.bySet) : DATA.scoreProgression.bySet;
+  document.getElementById('scoringPatternBody').innerHTML = scoringPatternHtml(computeScoringPattern(bySetForPattern));
   showScoreProgressionCharts();
   showPage(1);
   renderSingleMatchPlayerView();
@@ -2672,6 +2799,12 @@ def split_into_sets(lines):
 # 例: *04RM=          → team=*, player=04, skill=R, type=M, eval==
 ACTION_RE = re.compile(r'^([\*a])(\d\d)([ABSR])([A-Za-z])([#+\-!=/])([A-Z0-9]{2})?')
 
+# 得点パターン集計（analyze_score_progression）専用：ディグ(D)・セット(E)・フリーボール(F)も
+# 含めた「全スキル」にマッチする正規表現。得点/失点の直前にどのプレーがあったかを追うには、
+# アタック・ブロック・サーブ・レシーブだけでなく、ディグミスなどでラリーが終わるケースも
+# 取りこぼさずに拾う必要があるため、ACTION_REとは別に用意している。
+ACTION_ANY_SKILL_RE = re.compile(r'^([\*a])(\d\d)([A-Z])([A-Za-z])([#+\-!=/])([A-Z0-9]{2})?')
+
 # 得点が入った瞬間の行 例: '*p08:05' → ホームが得点して8-5に、'ap03:10' → アウェイが得点して3-10に
 SCORE_RE = re.compile(r'^([\*a])p(\d+):(\d+)')
 
@@ -3122,17 +3255,17 @@ def analyze_score_progression(lines_in_set, own_marker):
     自チームのミス('=')ならそのミスをした選手として扱う（相手のミスによる
     得点は、選手を特定せず「相手のミス」として扱う）。
     """
-    points = [{'own': 0, 'opponent': 0, 'scoringTeam': None, 'scorerNumber': None, 'byError': False}]
-    last_team = last_number = last_eval = None
+    points = [{'own': 0, 'opponent': 0, 'scoringTeam': None, 'scorerNumber': None, 'byError': False, 'skill': None}]
+    last_team = last_number = last_eval = last_skill = None
     for line in lines_in_set:
         fields = line.split(';')
         code = fields[0]
 
-        m_action = ACTION_RE.match(code)
+        m_action = ACTION_ANY_SKILL_RE.match(code)
         if m_action:
             team, player_num, skill, skill_type, evaluation, combo = m_action.groups()
             if evaluation in ('#', '='):
-                last_team, last_number, last_eval = team, int(player_num), evaluation
+                last_team, last_number, last_eval, last_skill = team, int(player_num), evaluation, skill
 
         m = SCORE_RE.match(code)
         if not m:
@@ -3145,25 +3278,31 @@ def analyze_score_progression(lines_in_set, own_marker):
             own_score, opponent_score = away_score, home_score
 
         prev = points[-1]
-        scoring_team = scorer_number = None
+        scoring_team = scorer_number = skill_used = None
         by_error = False
         if own_score > prev['own']:
             scoring_team = 'own'
             if last_team == own_marker and last_eval == '#':
                 scorer_number = last_number
+                skill_used = last_skill
             elif last_team is not None and last_team != own_marker and last_eval == '=':
                 by_error = True
+                skill_used = last_skill
         elif opponent_score > prev['opponent']:
             scoring_team = 'opponent'
             if last_team == own_marker and last_eval == '=':
                 scorer_number = last_number
                 by_error = True
+                skill_used = last_skill
+            elif last_team is not None and last_team != own_marker and last_eval == '#':
+                skill_used = last_skill
 
         points.append({
             'own': own_score, 'opponent': opponent_score,
             'scoringTeam': scoring_team, 'scorerNumber': scorer_number, 'byError': by_error,
+            'skill': skill_used,
         })
-        last_team = last_number = last_eval = None
+        last_team = last_number = last_eval = last_skill = None
     return points
 
 
