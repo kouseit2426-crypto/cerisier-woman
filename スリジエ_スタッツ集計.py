@@ -1,9 +1,89 @@
-<!DOCTYPE html>
+# ============================================
+# スリジエ スタッツ自動集計ツール（第1弾）
+# VolleyStationの .dvw ファイルから、
+# アタックの「打数・得点・ミス・決定率・効果率」を
+# 選手ごと・セットごとに自動計算します
+# ============================================
+
+import os
+import re
+import json
+
+# ---- ここだけ書き換えれば別の試合・別のPCでも動きます ----
+FILE_PATH = r"C:\Users\kouse\OneDrive\添付ファイル\東京スリジエ\2026-07-19 TSJ-KOU.dvw"
+
+# 対戦相手の名前（.dvwファイルの中では文字化けして読めないので手入力）
+OPPONENT_NAME = "江戸川大学"
+
+# 'women'（女子）か 'men'（男子）かをここで切り替える。
+# 男子の試合を読み込むときは 'men' に変えるだけで、名簿(ROSTER)・
+# 出力フォルダ・ページのタイトルが自動的に男子用に切り替わる
+TEAM = 'women'
+
+# ※出力ファイル名は「試合日_対戦相手.html」の形で自動的に決まるので、
+# ここを手で書き換える必要はもうありません（build_output_filename関数を参照）
+# 保存先も women/ または men/ フォルダに自動で分かれます
+
+# 背番号 → 名前 の対応表。チームごとに分けてあるので、TEAMの設定で自動的に選ばれる
+ROSTER_BY_TEAM = {
+    'women': {
+        1: '本村 嘉菜',
+        2: '北川 茉奈',
+        3: '島崎 葵',
+        4: '菊田 美優',
+        5: '萩谷 歩未',
+        6: '大石 麻美',
+        7: '坂本 朱乃',
+        8: '早野 有美',
+        9: '佐藤 まひろ',
+        10: '関口 希望',
+        11: '安藤 美果',
+        12: '小林 琉夏',
+    },
+    # ↓ .dvwファイルの中のローマ字名簿と、こうせいさんが送ってくれた
+    # 「スリジエ男子データ.xlsx」の漢字名簿を、名前を手がかりに突き合わせたものです。
+    # 一部（4,7,8,13,15,18,22,27番）はExcel側に見当たらなかったのでローマ字のまま、
+    # 17・25・26番は苗字の一致だけで判断した推測なので、確認をお願いします
+    'men': {
+        1: '大楽 祥生',
+        2: '浅岡 遥太',  # リベロ
+        3: '中島 博雅',
+        4: 'NAKANO SOUICHIROU',  # ← Excelに見当たらず。漢字が分かれば教えてください
+        5: '中村 耕平',
+        6: '岡田 大雅',
+        7: 'YAMAZAKI SATOSHI',  # ← Excelに見当たらず
+        8: 'YUUSUKE AOKI',  # ← Excelに見当たらず
+        9: '佐藤 匠',
+        10: '勝俣 樹生',
+        11: '奥田 晃',
+        12: '渡邊 颯',
+        13: 'TOMOYA FUJITA',  # ← Excelに見当たらず（リベロ）
+        14: '宮下 ジェイラン',
+        15: 'SATO KOUSUKE',  # ← Excelに見当たらず
+        17: '久保 昴也',  # ← 苗字のみ一致（推測）
+        18: 'OHSHITA TADASHI',  # ← Excelに見当たらず
+        22: 'SHIRAI HIROTO',  # ← Excelに見当たらず
+        23: '南 賢清',
+        25: '久本 快',  # ← 推測
+        26: '奥田 祥太',  # ← 推測
+        27: 'TAKAOKA KAKERU',  # ← Excelに見当たらず
+        31: '斎藤 直樹',
+    },
+}
+
+TEAM_LABELS = {'women': '東京スリジエ（女子）', 'men': '東京スリジエ（男子）'}
+PAGE_TITLES = {'women': '東京スリジエ女子試合データ', 'men': '東京スリジエ男子試合データ'}
+
+ROSTER = ROSTER_BY_TEAM[TEAM]
+TEAM_LABEL = TEAM_LABELS[TEAM]
+
+
+HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>東京スリジエ女子試合データ</title>
+<title>__PAGE_TITLE__</title>
 <style>
   .viz-root {
     color-scheme: light;
@@ -981,8 +1061,8 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
 
 
 // ==================== ここから：チームごとの設定 + ドラッグ&ドロップUI ====================
-const OWN_TEAM_CODE = 'TSJ';
-const ROSTER = {"1": "本村 嘉菜", "2": "北川 茉奈", "3": "島崎 葵", "4": "菊田 美優", "5": "萩谷 歩未", "6": "大石 麻美", "7": "坂本 朱乃", "8": "早野 有美", "9": "佐藤 まひろ", "10": "関口 希望", "11": "安藤 美果", "12": "小林 琉夏"};
+const OWN_TEAM_CODE = '__OWN_TEAM_CODE__';
+const ROSTER = __ROSTER_JSON__;
 
 let MATCHES = [];
 
@@ -2476,7 +2556,7 @@ function showMatchComparison(matches) {
   document.getElementById('matchComparisonBody').innerHTML = html;
 }
 
-document.getElementById('teamTitle').textContent = '東京スリジエ（女子）';
+document.getElementById('teamTitle').textContent = '__TEAM_LABEL__';
 setupDropZone();
 setupDropZoneToggle();
 setupPlayerListToggle();
@@ -2499,3 +2579,1023 @@ fetch('matches.json')
 </script>
 </body>
 </html>
+"""
+
+
+def load_file(path):
+    """.dvwファイルを読み込んで、中身の文字列を返す"""
+    with open(path, encoding='ascii') as f:
+        return f.read()
+
+
+def get_section(content, name):
+    """[3XXXX] というセクションの中身だけを取り出す"""
+    start = content.find(f'[{name}]')
+    if start == -1:
+        return ''
+    start += len(f'[{name}]\n')
+    end = content.find('[3', start)
+    if end == -1:
+        end = len(content)
+    return content[start:end]
+
+
+# 自分たちのチームコード。.dvwファイルの[3TEAMS]セクションに出てくるコードで、
+# 女子は'TSJ'、男子は'TSD'（男子の試合データで確認済み）。チームごとに違うので
+# TEAMの設定に応じて自動的に切り替わるようにしてある
+TARGET_TEAM_CODE_BY_TEAM = {'women': 'TSJ', 'men': 'TSD'}
+TARGET_TEAM_CODE = TARGET_TEAM_CODE_BY_TEAM[TEAM]
+
+
+def get_own_team_marker(content):
+    """
+    [3TEAMS]セクションを見て、自チーム(TARGET_TEAM_CODE)が
+    ホーム('*')なのかアウェイ('a')なのかを調べる
+    """
+    teams_section = get_section(content, '3TEAMS')
+    team_lines = [l for l in teams_section.splitlines() if l.strip()]
+    team_codes = [l.split(';')[0] for l in team_lines]
+    if team_codes[0] == TARGET_TEAM_CODE:
+        return '*'
+    else:
+        return 'a'
+
+
+def get_back_attack_combos(content):
+    """
+    [3ATTACKCOMBINATION]から、
+    「バックアタック(後衛からの攻撃)」に該当する攻撃コードの集合を作る。
+
+    判定ルール：コンボ表の2番目のフィールドが「ゾーン番号」で、
+    7・8・9番はコートの後方(バックアタック用)ゾーンを表す。
+    （最初は9番目のフィールド=カテゴリ文字'P'で判定していたが、
+    実データの答え合わせをしたところ、P9やL9などゾーン9のコードが
+    'B'カテゴリになっていて漏れることが判明。ゾーン番号での判定に修正）
+    """
+    section = get_section(content, '3ATTACKCOMBINATION')
+    back_combos = set()
+    for line in section.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split(';')
+        combo_code = fields[0]
+        zone = fields[1] if len(fields) > 1 else ''
+        if zone in ('7', '8', '9'):
+            back_combos.add(combo_code)
+    return back_combos
+
+
+def split_into_sets(lines):
+    """
+    '**1set' '**2set' のような区切り行を目印に、
+    セットごとの行リストに分割する
+    """
+    sets = []
+    current = []
+    for line in lines:
+        # 行全体を残すようにしたので、区切り行の後ろに得点情報などが
+        # ついていても検知できるよう、末尾の $ 完全一致は外している
+        if re.match(r'^\*\*\dset', line):
+            sets.append(current)
+            current = []
+        else:
+            current.append(line)
+    if current:
+        sets.append(current)
+    return sets
+
+
+# アタック(A)・ブロック(B)・サーブ(S)・レシーブ(R) の行にマッチする正規表現
+# 例: *07AH#P3~3~~H2  → team=*, player=07, skill=A, type=H, eval=#, combo=P3
+# 例: *07BM!~~~~2B~2  → team=*, player=07, skill=B, type=M, eval=!
+# 例: *06SM-          → team=*, player=06, skill=S, type=M, eval=-
+# 例: *04RM=          → team=*, player=04, skill=R, type=M, eval==
+ACTION_RE = re.compile(r'^([\*a])(\d\d)([ABSR])([A-Za-z])([#+\-!=/])([A-Z0-9]{2})?')
+
+# 得点が入った瞬間の行 例: '*p08:05' → ホームが得点して8-5に、'ap03:10' → アウェイが得点して3-10に
+SCORE_RE = re.compile(r'^([\*a])p(\d+):(\d+)')
+
+# 選手1人分の集計の初期値（この形をずっと使い回す）
+EMPTY_PLAYER_STATS = {
+    'attempts': 0, 'points': 0, 'errors': 0, 'blocked': 0,
+    'back_attempts': 0, 'back_points': 0, 'back_errors': 0,
+    'block_attempts': 0, 'block_points': 0, 'block_errors': 0,
+    'block_touch_own': 0, 'block_touch_opp': 0,
+    'serve_attempts': 0, 'serve_aces': 0, 'serve_errors': 0,
+    'receive_attempts': 0, 'receive_a': 0, 'receive_b': 0,
+    'receive_c': 0, 'receive_d': 0, 'receive_errors': 0,
+}
+
+# 攻撃コンビ表([3ATTACKCOMBINATION])の9番目の項目(カテゴリ文字)を、
+# レフト／ライト／ミドル／パイプ／その他 に振り分ける対応表
+# 実データで突き合わせた結果：F=レフト系(4番・7番などコートの左サイド)
+# B=ライト系(2番・9番などコートの右サイド) C=ミドル/クイック系 P=パイプ
+# それ以外(セッター自身の攻撃など、ごく少数)は「その他」にまとめている
+CATEGORY_ORDER = ['left', 'right', 'middle', 'pipe', 'other']
+CATEGORY_LABELS = {'left': 'レフト', 'right': 'ライト', 'middle': 'ミドル', 'pipe': 'パイプ', 'other': 'その他'}
+_COMBO_CATEGORY_MAP = {'F': 'left', 'B': 'right', 'C': 'middle', 'P': 'pipe'}
+
+
+def get_combo_categories(content):
+    """[3ATTACKCOMBINATION]セクションから、コンビコード→攻撃タイプ の対応表を作る"""
+    section = get_section(content, '3ATTACKCOMBINATION')
+    mapping = {}
+    for line in section.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split(';')
+        code = fields[0]
+        category_letter = fields[8] if len(fields) > 8 else ''
+        mapping[code] = _COMBO_CATEGORY_MAP.get(category_letter, 'other')
+    return mapping
+
+
+def empty_rotation_entry():
+    return {
+        'attempts': 0, 'points': 0, 'errors': 0,
+        'categories': {cat: {'attempts': 0, 'points': 0, 'errors': 0} for cat in CATEGORY_ORDER},
+    }
+
+
+def analyze_set(lines_in_set, own_marker, back_attack_combos):
+    """1セット分の行から、選手ごとのアタック・ブロック集計をする"""
+    # 選手ごとの集計を入れる辞書。まだ出てきていない選手はここで初期化される
+    stats = {}
+
+    def get_player_stats(number):
+        if number not in stats:
+            stats[number] = dict(EMPTY_PLAYER_STATS)
+        return stats[number]
+
+    for line in lines_in_set:
+        fields = line.split(';')
+        code = fields[0]
+        m = ACTION_RE.match(code)
+        if not m:
+            continue
+        team, player_num, skill, skill_type, evaluation, combo = m.groups()
+
+        # ホームチーム('*')かどうかで、スリジエの選手かを判定
+        # ※away('a')側がスリジエの試合では、下の '==' を '!=' に直してください
+        if team != own_marker:
+            continue
+
+        number = int(player_num)
+        p = get_player_stats(number)
+
+        if skill == 'A':
+            is_back = combo in back_attack_combos
+            p['attempts'] += 1
+            if is_back:
+                p['back_attempts'] += 1
+            if evaluation == '#':
+                p['points'] += 1
+                if is_back:
+                    p['back_points'] += 1
+            elif evaluation == '=':
+                p['errors'] += 1
+                if is_back:
+                    p['back_errors'] += 1
+            elif evaluation == '/':
+                p['blocked'] += 1
+
+        elif skill == 'B':
+            # ブロックの判定ルール（実データとスコア推移の答え合わせ済み）：
+            # '#'=ブロック得点  '='=ブロック失点
+            # '!'=ワンチ・相手コートへ  '+'=ワンチ・自コートへ
+            p['block_attempts'] += 1
+            if evaluation == '#':
+                p['block_points'] += 1
+            elif evaluation == '=':
+                p['block_errors'] += 1
+            elif evaluation == '!':
+                p['block_touch_opp'] += 1
+            elif evaluation == '+':
+                p['block_touch_own'] += 1
+
+        elif skill == 'S':
+            # サーブの判定ルール（得点推移で答え合わせ済み）：
+            # '#'=サーブエース  '='=サーブミス
+            p['serve_attempts'] += 1
+            if evaluation == '#':
+                p['serve_aces'] += 1
+            elif evaluation == '=':
+                p['serve_errors'] += 1
+
+        elif skill == 'R':
+            # レシーブ（サーブレシーブ）の判定ルール（得点推移で答え合わせ済み）：
+            # 相手のサーブが '#'(エース) のときは、必ず直後に自チームの
+            # レシーブが '=' として記録される（＝返せなかった、が自動で対になっている）
+            # ので、レシーブの'='は「返球できずそのまま失点」で間違いない。
+            # ここから先はご指定のパス評価に合わせた表記：
+            # '#'=Aパス（パーフェクト） '+'=Bパス（グッド）
+            # '-'（と、ごく低頻度の'!'）=Cパス（アタックラインに返球）
+            # '/'=Dパス（セッター以外が上げた/相手コートへ返った、大きく崩れた返球）
+            p['receive_attempts'] += 1
+            if evaluation == '#':
+                p['receive_a'] += 1
+            elif evaluation == '+':
+                p['receive_b'] += 1
+            elif evaluation == '=':
+                p['receive_errors'] += 1
+            elif evaluation == '/':
+                p['receive_d'] += 1
+            else:  # '-' と '!'
+                p['receive_c'] += 1
+
+    return stats
+
+
+def analyze_rotation_attacks(lines_in_set, own_marker, combo_categories):
+    """
+    1セット分の行から、自チームのローテーション(S1～S6)ごと・攻撃タイプごとの
+    アタック集計をする。
+
+    「ローテーション」は、セット開始時点のならびをS1として、自チームの
+    ローテーション配列(行末の背番号の並び)が変わるたび(＝1回転するたび)に
+    S2→S3→…→S6→S1 と数える。得点を取ったのが誰か・セッターが誰かには
+    依存しない、純粋に「自チームが何回転目か」だけの数え方。
+    """
+    rotation_stats = {n: empty_rotation_entry() for n in range(1, 7)}
+    own_rotation = None
+    rotation_number = 1
+
+    for line in lines_in_set:
+        fields = line.split(';')
+        code = fields[0]
+
+        if len(fields) >= 26:
+            own_fields = tuple(fields[14:20]) if own_marker == '*' else tuple(fields[20:26])
+            if own_fields != ('', '', '', '', '', ''):
+                if own_rotation is None:
+                    own_rotation = own_fields
+                elif own_fields != own_rotation:
+                    own_rotation = own_fields
+                    rotation_number = rotation_number % 6 + 1
+
+        m = ACTION_RE.match(code)
+        if not m:
+            continue
+        team, player_num, skill, skill_type, evaluation, combo = m.groups()
+        if team != own_marker or skill != 'A':
+            continue
+
+        entry = rotation_stats[rotation_number]
+        entry['attempts'] += 1
+        if evaluation == '#':
+            entry['points'] += 1
+        elif evaluation == '=':
+            entry['errors'] += 1
+
+        cat_entry = entry['categories'][combo_categories.get(combo, 'other')]
+        cat_entry['attempts'] += 1
+        if evaluation == '#':
+            cat_entry['points'] += 1
+        elif evaluation == '=':
+            cat_entry['errors'] += 1
+
+    return rotation_stats
+
+
+def merge_rotation_stats(all_set_rotation_stats):
+    """複数セット分のローテーション集計を、ローテーション番号ごとに合計する"""
+    total = {n: empty_rotation_entry() for n in range(1, 7)}
+    for set_stats in all_set_rotation_stats:
+        for n in range(1, 7):
+            for key in ('attempts', 'points', 'errors'):
+                total[n][key] += set_stats[n][key]
+            for cat in CATEGORY_ORDER:
+                for key in ('attempts', 'points', 'errors'):
+                    total[n]['categories'][cat][key] += set_stats[n]['categories'][cat][key]
+    return total
+
+
+def analyze_player_rotation_attacks(lines_in_set, own_marker):
+    """
+    1セット分の行から、自チームのローテーション(S1〜S6)ごと・選手ごとの
+    アタック集計をする（誰がどのローテーションで何本打っているかを見るため）。
+    ローテーションの数え方は analyze_rotation_attacks と同じ。
+    """
+    result = {n: {} for n in range(1, 7)}
+    own_rotation = None
+    rotation_number = 1
+
+    for line in lines_in_set:
+        fields = line.split(';')
+        code = fields[0]
+
+        if len(fields) >= 26:
+            own_fields = tuple(fields[14:20]) if own_marker == '*' else tuple(fields[20:26])
+            if own_fields != ('', '', '', '', '', ''):
+                if own_rotation is None:
+                    own_rotation = own_fields
+                elif own_fields != own_rotation:
+                    own_rotation = own_fields
+                    rotation_number = rotation_number % 6 + 1
+
+        m = ACTION_RE.match(code)
+        if not m:
+            continue
+        team, player_num, skill, skill_type, evaluation, combo = m.groups()
+        if team != own_marker or skill != 'A':
+            continue
+
+        number = int(player_num)
+        players = result[rotation_number]
+        if number not in players:
+            players[number] = {'attempts': 0, 'points': 0, 'errors': 0}
+        p = players[number]
+        p['attempts'] += 1
+        if evaluation == '#':
+            p['points'] += 1
+        elif evaluation == '=':
+            p['errors'] += 1
+
+    return result
+
+
+def merge_player_rotation_attacks(all_set_results):
+    """複数セット分の「選手×ローテーション」集計を合計する"""
+    total = {n: {} for n in range(1, 7)}
+    for set_result in all_set_results:
+        for n in range(1, 7):
+            for number, s in set_result[n].items():
+                if number not in total[n]:
+                    total[n][number] = {'attempts': 0, 'points': 0, 'errors': 0}
+                t = total[n][number]
+                t['attempts'] += s['attempts']
+                t['points'] += s['points']
+                t['errors'] += s['errors']
+    return total
+
+
+def build_player_rotation_summary(merged_player_rotation):
+    """選手ごとに引きやすいよう { 選手番号: [6ローテーション分の行] } の形にまとめ直す"""
+    numbers = set()
+    for n in range(1, 7):
+        numbers.update(merged_player_rotation[n].keys())
+    summary = {}
+    for number in numbers:
+        rows = []
+        for n in range(1, 7):
+            s = merged_player_rotation[n].get(number, {'attempts': 0, 'points': 0, 'errors': 0})
+            rows.append({
+                'rotation': n,
+                'attempts': s['attempts'],
+                'points': s['points'],
+                'errors': s['errors'],
+                'kill_rate': rate(s['points'], s['attempts']),
+            })
+        summary[number] = rows
+    return summary
+
+
+def rotation_summary(rotation_stats):
+    """ローテーション集計(1～6の辞書)に決定率を付け加え、表示用の行リストにする
+    （末尾に6ローテーション分を合計した「合計」行も追加する）"""
+    rows = []
+    grand = empty_rotation_entry()
+    for n in range(1, 7):
+        e = rotation_stats[n]
+        row = {
+            'rotation': n,
+            'attempts': e['attempts'],
+            'points': e['points'],
+            'errors': e['errors'],
+            'kill_rate': rate(e['points'], e['attempts']),
+            'categories': {
+                cat: {
+                    'attempts': e['categories'][cat]['attempts'],
+                    'points': e['categories'][cat]['points'],
+                    'errors': e['categories'][cat]['errors'],
+                    'kill_rate': rate(e['categories'][cat]['points'], e['categories'][cat]['attempts']),
+                }
+                for cat in CATEGORY_ORDER
+            },
+        }
+        rows.append(row)
+        grand['attempts'] += e['attempts']
+        grand['points'] += e['points']
+        grand['errors'] += e['errors']
+        for cat in CATEGORY_ORDER:
+            for key in ('attempts', 'points', 'errors'):
+                grand['categories'][cat][key] += e['categories'][cat][key]
+
+    rows.append({
+        'rotation': '合計',
+        'attempts': grand['attempts'],
+        'points': grand['points'],
+        'errors': grand['errors'],
+        'kill_rate': rate(grand['points'], grand['attempts']),
+        'categories': {
+            cat: {
+                'attempts': grand['categories'][cat]['attempts'],
+                'points': grand['categories'][cat]['points'],
+                'errors': grand['categories'][cat]['errors'],
+                'kill_rate': rate(grand['categories'][cat]['points'], grand['categories'][cat]['attempts']),
+            }
+            for cat in CATEGORY_ORDER
+        },
+    })
+    return rows
+
+
+def analyze_side_out_break(lines_in_set, own_marker):
+    """
+    1セット分の行から、自チームが「サーブ側だったラリー」と
+    「レシーブ側だったラリー」それぞれについて、本数と勝った本数を数える。
+
+    サーブ側で勝つ＝ブレイク、レシーブ側で勝つ＝サイドアウト。
+    得点が入った瞬間の行('*pXX:YY'/'apXX:YY')の直前に出てきた最新の
+    サーブ('S')が、そのラリーの「どちらが打ったサーブか」を表す。
+    """
+    result = {'serve_total': 0, 'serve_wins': 0, 'receive_total': 0, 'receive_wins': 0}
+    current_server = None
+
+    for line in lines_in_set:
+        code = line.split(';')[0]
+        m_action = ACTION_RE.match(code)
+        if m_action and m_action.group(3) == 'S':
+            current_server = m_action.group(1)
+
+        m_score = SCORE_RE.match(code)
+        if m_score and current_server is not None:
+            scorer = m_score.group(1)
+            if current_server == own_marker:
+                result['serve_total'] += 1
+                if scorer == own_marker:
+                    result['serve_wins'] += 1
+            else:
+                result['receive_total'] += 1
+                if scorer == own_marker:
+                    result['receive_wins'] += 1
+
+    return result
+
+
+def merge_side_out_break(all_set_results):
+    """複数セット分のサイドアウト/ブレイク集計を合計する"""
+    total = {'serve_total': 0, 'serve_wins': 0, 'receive_total': 0, 'receive_wins': 0}
+    for r in all_set_results:
+        for key in total:
+            total[key] += r[key]
+    return total
+
+
+def analyze_side_out_break_by_rotation(lines_in_set, own_marker):
+    """
+    1セット分の行から、自チームのローテーション(S1～S6)ごとに
+    サイドアウト率・ブレイク率を集計する。
+    ローテーションの数え方は analyze_rotation_attacks と同じ
+    （自チームの背番号の並びが変わるたびに1回転とみなす）。
+    """
+    result = {n: {'serve_total': 0, 'serve_wins': 0, 'receive_total': 0, 'receive_wins': 0} for n in range(1, 7)}
+    own_rotation = None
+    rotation_number = 1
+    current_server = None
+
+    for line in lines_in_set:
+        fields = line.split(';')
+        code = fields[0]
+
+        if len(fields) >= 26:
+            own_fields = tuple(fields[14:20]) if own_marker == '*' else tuple(fields[20:26])
+            if own_fields != ('', '', '', '', '', ''):
+                if own_rotation is None:
+                    own_rotation = own_fields
+                elif own_fields != own_rotation:
+                    own_rotation = own_fields
+                    rotation_number = rotation_number % 6 + 1
+
+        m_action = ACTION_RE.match(code)
+        if m_action and m_action.group(3) == 'S':
+            current_server = m_action.group(1)
+
+        m_score = SCORE_RE.match(code)
+        if m_score and current_server is not None:
+            scorer = m_score.group(1)
+            entry = result[rotation_number]
+            if current_server == own_marker:
+                entry['serve_total'] += 1
+                if scorer == own_marker:
+                    entry['serve_wins'] += 1
+            else:
+                entry['receive_total'] += 1
+                if scorer == own_marker:
+                    entry['receive_wins'] += 1
+
+    return result
+
+
+def merge_side_out_break_by_rotation(all_set_results):
+    """複数セット分の、ローテーション別サイドアウト/ブレイク集計をローテーション番号ごとに合計する"""
+    total = {n: {'serve_total': 0, 'serve_wins': 0, 'receive_total': 0, 'receive_wins': 0} for n in range(1, 7)}
+    for set_result in all_set_results:
+        for n in range(1, 7):
+            for key in total[n]:
+                total[n][key] += set_result[n][key]
+    return total
+
+
+def side_out_break_summary(r):
+    """サーブ本数・勝利数などから、ブレイク率・サイドアウト率を付け加える"""
+    return {
+        'serve_total': r['serve_total'],
+        'serve_wins': r['serve_wins'],
+        'break_rate': rate(r['serve_wins'], r['serve_total']),
+        'receive_total': r['receive_total'],
+        'receive_wins': r['receive_wins'],
+        'side_out_rate': rate(r['receive_wins'], r['receive_total']),
+    }
+
+
+def analyze_score_progression(lines_in_set, own_marker):
+    """
+    1セット分の得点推移を、ラリーが決まるたびに記録していく
+    （0-0から始まり、1点入るごとに1つずつ増える）。
+    得点行('*pXX:YY'/'apXX:YY')のXXは常にホーム側の点数、YYは常にアウェイ側の点数
+    （どちらが決めた点かに関わらずこの順番）なので、own_markerがホーム('*')か
+    アウェイ('a')かで、どちらを自チームの点数として読むかを決める。
+
+    あわせて、その得点/失点に自チームのどの選手が絡んだかも記録する。
+    得点行の直前にある自チームの決定('#')ならその選手が得点者、直前にある
+    自チームのミス('=')ならそのミスをした選手として扱う（相手のミスによる
+    得点は、選手を特定せず「相手のミス」として扱う）。
+    """
+    points = [{'own': 0, 'opponent': 0, 'scoringTeam': None, 'scorerNumber': None, 'byError': False}]
+    last_team = last_number = last_eval = None
+    for line in lines_in_set:
+        fields = line.split(';')
+        code = fields[0]
+
+        m_action = ACTION_RE.match(code)
+        if m_action:
+            team, player_num, skill, skill_type, evaluation, combo = m_action.groups()
+            if evaluation in ('#', '='):
+                last_team, last_number, last_eval = team, int(player_num), evaluation
+
+        m = SCORE_RE.match(code)
+        if not m:
+            continue
+        home_score = int(m.group(2))
+        away_score = int(m.group(3))
+        if own_marker == '*':
+            own_score, opponent_score = home_score, away_score
+        else:
+            own_score, opponent_score = away_score, home_score
+
+        prev = points[-1]
+        scoring_team = scorer_number = None
+        by_error = False
+        if own_score > prev['own']:
+            scoring_team = 'own'
+            if last_team == own_marker and last_eval == '#':
+                scorer_number = last_number
+            elif last_team is not None and last_team != own_marker and last_eval == '=':
+                by_error = True
+        elif opponent_score > prev['opponent']:
+            scoring_team = 'opponent'
+            if last_team == own_marker and last_eval == '=':
+                scorer_number = last_number
+                by_error = True
+
+        points.append({
+            'own': own_score, 'opponent': opponent_score,
+            'scoringTeam': scoring_team, 'scorerNumber': scorer_number, 'byError': by_error,
+        })
+        last_team = last_number = last_eval = None
+    return points
+
+
+def get_starting_lineup(lines_in_set, own_marker):
+    """
+    そのセット開始時点の、自チームのスタメン(P1〜P6の背番号)を取り出す。
+    ローテーション追跡(analyze_rotation_attacks)と同じ、行末のならび
+    (fields[14:20]がホーム、fields[20:26]がアウェイ)を使う。
+    そのセットで最初に6人分そろって出てくる行が、そのセットのスタメンにあたる。
+    """
+    for line in lines_in_set:
+        fields = line.split(';')
+        if len(fields) < 26:
+            continue
+        own_fields = fields[14:20] if own_marker == '*' else fields[20:26]
+        if any(v == '' for v in own_fields):
+            continue
+        return [int(v) for v in own_fields]
+    return None
+
+
+def merge_stats(all_set_stats):
+    """複数セット分の集計を、選手ごとに合計する"""
+    total = {}
+    for set_stats in all_set_stats:
+        for number, s in set_stats.items():
+            if number not in total:
+                total[number] = dict(EMPTY_PLAYER_STATS)
+            for key in s:
+                total[number][key] += s[key]
+    return total
+
+
+def get_match_date(content):
+    """[3MATCH]セクションの1行目の先頭 = 試合の日付"""
+    match_section = get_section(content, '3MATCH')
+    first_line = match_section.splitlines()[0]
+    return first_line.split(';')[0]
+
+
+def date_slug(match_date):
+    """試合日('19/07/2026'のようなDD/MM/YYYY形式)を、並び替えやすい'2026-07-19'の形にする"""
+    try:
+        day, month, year = match_date.split('/')
+        return f'{year}-{month}-{day}'
+    except ValueError:
+        return match_date.replace('/', '-')
+
+
+def build_match_slug(match_date, opponent):
+    """試合日＋対戦相手から、ファイル名などに使う識別子を作る（拡張子なし）"""
+    return f'{date_slug(match_date)}_{opponent}'
+
+
+def save_match_data(dashboard_data, team, match_date, opponent):
+    """
+    1試合分のダッシュボードデータを、HTMLではなくJSONファイルとして保存する。
+    例: women/2026-07-19_江戸川大学.json
+    HTMLは女子・男子それぞれ1枚の共通ダッシュボード(index.html)だけを使い、
+    その中で試合を切り替えると、この対応するJSONを読み込みに行く仕組みにしている。
+    （GitHubへのアップロードをシンプルにするため、サブフォルダを作らず
+    index.htmlと同じ階層にそのまま置く形にしている）
+    戻り値は、index.htmlから見た相対パス（例: '2026-07-19_江戸川大学.json'）
+    """
+    slug = build_match_slug(match_date, opponent)
+    relative_path = f'{slug}.json'
+    full_path = os.path.join(team, relative_path)
+    folder = os.path.dirname(full_path)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    with open(full_path, 'w', encoding='utf-8') as f:
+        json.dump(dashboard_data, f, ensure_ascii=False)
+    return relative_path.replace(os.sep, '/')
+
+
+def update_manifest(team, match_date, opponent, data_relpath):
+    """
+    そのチームの試合一覧(matches.json)を更新する。
+    同じ試合日・対戦相手の組み合わせが既にあれば古い方を消してから追加するので、
+    同じ試合を後で読み込み直しても重複しない。日付が新しい順に並べ直す。
+    """
+    manifest_path = os.path.join(team, 'matches.json')
+    if os.path.exists(manifest_path):
+        with open(manifest_path, encoding='utf-8') as f:
+            matches = json.load(f)
+    else:
+        matches = []
+
+    matches = [
+        m for m in matches
+        if not (m['matchDate'] == match_date and m['opponent'] == opponent)
+    ]
+    matches.append({
+        'matchDate': match_date,
+        'opponent': opponent,
+        'dataFile': data_relpath,
+    })
+    matches.sort(key=lambda m: date_slug(m['matchDate']), reverse=True)
+
+    with open(manifest_path, 'w', encoding='utf-8') as f:
+        json.dump(matches, f, ensure_ascii=False, indent=2)
+    return matches
+
+
+def rate(numerator, denominator):
+    """0割りを避けつつ割合を計算する（分母が0ならNoneを返す）"""
+    if denominator == 0:
+        return None
+    return numerator / denominator
+
+
+def player_summary(number, s, name=None):
+    """1人分の集計データに、名前と決定率・効果率を計算して付け加える"""
+    attempts = s['attempts']
+    points = s['points']
+    errors = s['errors']
+    blocked = s['blocked']
+    return {
+        'number': number,
+        'name': name if name is not None else ROSTER.get(number, f'#{number}'),
+        'attempts': attempts,
+        'points': points,
+        'errors': errors,
+        'blocked': blocked,
+        'kill_rate': rate(points, attempts),
+        'efficiency': rate(points - errors - blocked, attempts),
+        'back_attempts': s['back_attempts'],
+        'back_points': s['back_points'],
+        'back_errors': s['back_errors'],
+        'block_attempts': s['block_attempts'],
+        'block_points': s['block_points'],
+        'block_errors': s['block_errors'],
+        'block_touch_own': s['block_touch_own'],
+        'block_touch_opp': s['block_touch_opp'],
+        'serve_attempts': s['serve_attempts'],
+        'serve_aces': s['serve_aces'],
+        'serve_errors': s['serve_errors'],
+        'serve_ace_rate': rate(s['serve_aces'], s['serve_attempts']),
+        'serve_error_rate': rate(s['serve_errors'], s['serve_attempts']),
+        'serve_efficiency': rate(s['serve_aces'] - s['serve_errors'], s['serve_attempts']),
+        'receive_attempts': s['receive_attempts'],
+        'receive_a': s['receive_a'],
+        'receive_b': s['receive_b'],
+        'receive_c': s['receive_c'],
+        'receive_d': s['receive_d'],
+        'receive_errors': s['receive_errors'],
+        'receive_return_rate': rate(s['receive_attempts'] - s['receive_errors'], s['receive_attempts']),
+        'receive_a_rate': rate(s['receive_a'], s['receive_attempts']),
+    }
+
+
+def team_stats(stats_dict):
+    """選手ごとの集計(stats_dict)を、チーム全体の合計に足し合わせる"""
+    total = dict(EMPTY_PLAYER_STATS)
+    for s in stats_dict.values():
+        for key in total:
+            total[key] += s[key]
+    return total
+
+
+def build_dashboard_data(all_set_stats, total_stats, match_date, all_rotation_stats, all_side_out_break,
+                          all_score_progression, all_side_out_break_by_rotation=None,
+                          all_player_rotation_attacks=None, all_starting_lineups=None):
+    """ダッシュボード(HTML)に埋め込むためのデータをまとめる"""
+    numbers = sorted(total_stats.keys())
+    merged_sob_by_rotation = (
+        merge_side_out_break_by_rotation(all_side_out_break_by_rotation)
+        if all_side_out_break_by_rotation else None
+    )
+    player_rotation_summary = (
+        build_player_rotation_summary(merge_player_rotation_attacks(all_player_rotation_attacks))
+        if all_player_rotation_attacks else {}
+    )
+    return {
+        'matchDate': match_date,
+        'opponent': OPPONENT_NAME,
+        'teamLabel': TEAM_LABEL,
+        'sets': [
+            {
+                'setNumber': i + 1,
+                'players': [player_summary(n, s) for n, s in sorted(set_stats.items())],
+            }
+            for i, set_stats in enumerate(all_set_stats)
+        ],
+        'total': [player_summary(n, total_stats[n]) for n in numbers],
+        'team': {
+            'name': 'チーム全体',
+            'total': player_summary(None, team_stats(total_stats), name='チーム全体'),
+            'sets': [
+                {'setNumber': i + 1, **player_summary(None, team_stats(set_stats), name='チーム全体')}
+                for i, set_stats in enumerate(all_set_stats)
+            ],
+        },
+        'rotation': {
+            'bySet': [
+                {'setNumber': i + 1, 'rows': rotation_summary(rs)}
+                for i, rs in enumerate(all_rotation_stats)
+            ],
+            'total': {'rows': rotation_summary(merge_rotation_stats(all_rotation_stats))},
+            'byPlayer': player_rotation_summary,
+        },
+        'sideOutBreak': {
+            'bySet': [
+                {'setNumber': i + 1, **side_out_break_summary(r)}
+                for i, r in enumerate(all_side_out_break)
+            ],
+            'total': side_out_break_summary(merge_side_out_break(all_side_out_break)),
+            'byRotation': (
+                [
+                    {'rotation': n, **side_out_break_summary(merged_sob_by_rotation[n])}
+                    for n in range(1, 7)
+                ]
+                if merged_sob_by_rotation else []
+            ),
+        },
+        'scoreProgression': {
+            'bySet': [
+                {
+                    'setNumber': i + 1,
+                    'points': points,
+                    'startingLineup': (
+                        all_starting_lineups[i] if all_starting_lineups and i < len(all_starting_lineups) else None
+                    ),
+                }
+                for i, points in enumerate(all_score_progression)
+            ],
+        },
+    }
+
+
+def generate_dashboard_shell(team, team_label):
+    """
+    チーム共通のダッシュボード(HTML)を1枚だけ作る。
+    このHTMLには試合データを埋め込まず、matches.json と data/*.json を
+    ブラウザ側でfetchして表示する仕組みになっている。
+    毎回上書きするので、テンプレートを直しても既存の試合データはそのまま使える。
+    """
+    html = HTML_TEMPLATE.replace('__TEAM_LABEL__', team_label)
+    html = html.replace('__PAGE_TITLE__', PAGE_TITLES[team])
+    html = html.replace('__OWN_TEAM_CODE__', TARGET_TEAM_CODE_BY_TEAM[team])
+    html = html.replace('__ROSTER_JSON__', json.dumps(ROSTER_BY_TEAM[team], ensure_ascii=False))
+    output_path = os.path.join(team, 'index.html')
+    folder = os.path.dirname(output_path)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html)
+    return output_path
+
+
+def print_report(all_set_stats, total_stats, all_rotation_stats, all_side_out_break):
+    print('=' * 70)
+    print('アタックスタッツ自動集計結果')
+    print('=' * 70)
+
+    for set_num, set_stats in enumerate(all_set_stats, start=1):
+        print(f'\n--- 第{set_num}セット ---')
+        print_table(set_stats)
+
+    print('\n--- 全セット合計 ---')
+    print_table(total_stats)
+
+    print('\n' + '=' * 70)
+    print('ブロックスタッツ自動集計結果（全セット合計）')
+    print('=' * 70)
+    print_block_table(total_stats)
+
+    print('\n' + '=' * 70)
+    print('サーブスタッツ自動集計結果（全セット合計）')
+    print('=' * 70)
+    print_serve_table(total_stats)
+
+    print('\n' + '=' * 70)
+    print('レシーブスタッツ自動集計結果（全セット合計）')
+    print('=' * 70)
+    print_receive_table(total_stats)
+
+    print('\n' + '=' * 70)
+    print('ローテーション別 攻撃タイプ分布自動集計結果（チーム全体）')
+    print('=' * 70)
+    for set_num, rs in enumerate(all_rotation_stats, start=1):
+        print_rotation_table(rotation_summary(rs), f'第{set_num}セット')
+    print_rotation_table(rotation_summary(merge_rotation_stats(all_rotation_stats)), '全セット合計')
+
+    print('\n' + '=' * 70)
+    print('サイドアウト率・ブレイク率自動集計結果（チーム全体）')
+    print('=' * 70)
+    header = f"{'':<10}{'サーブ本数':>10}{'ブレイク率':>10}{'レシーブ本数':>12}{'サイドアウト率':>14}"
+    print(header)
+    print('-' * len(header))
+    for set_num, r in enumerate(all_side_out_break, start=1):
+        sb = side_out_break_summary(r)
+        print(f"{f'第{set_num}セット':<10}{sb['serve_total']:>10}{fmt_pct(sb['break_rate']):>10}"
+              f"{sb['receive_total']:>12}{fmt_pct(sb['side_out_rate']):>14}")
+    total_sb = side_out_break_summary(merge_side_out_break(all_side_out_break))
+    print(f"{'合計':<10}{total_sb['serve_total']:>10}{fmt_pct(total_sb['break_rate']):>10}"
+          f"{total_sb['receive_total']:>12}{fmt_pct(total_sb['side_out_rate']):>14}")
+
+
+def print_table(stats_dict):
+    header = f"{'選手':<10}{'打数':>5}{'得点':>5}{'ミス':>5}{'決定率':>8}{'効果率':>8}{'内バック':>9}"
+    print(header)
+    print('-' * len(header))
+    # 背番号順に並べる
+    for number in sorted(stats_dict.keys()):
+        s = stats_dict[number]
+        name = ROSTER.get(number, f'#{number}')
+        attempts = s['attempts']
+        points = s['points']
+        errors = s['errors']
+        blocked = s['blocked']
+
+        if attempts > 0:
+            kill_rate = points / attempts
+            efficiency = (points - errors - blocked) / attempts
+            kill_rate_str = f'{kill_rate:.1%}'
+            efficiency_str = f'{efficiency:.1%}'
+        else:
+            kill_rate_str = '-'
+            efficiency_str = '-'
+
+        back = f"{s['back_points']}/{s['back_attempts']}"
+        print(f"{name:<10}{attempts:>5}{points:>5}{errors:>5}{kill_rate_str:>8}{efficiency_str:>8}{back:>9}")
+
+
+def print_block_table(stats_dict):
+    header = f"{'選手':<10}{'本数':>5}{'得点':>5}{'ワンチ':>7}{'自コート':>7}{'相手コート':>9}{'失点':>5}"
+    print(header)
+    print('-' * len(header))
+    for number in sorted(stats_dict.keys()):
+        s = stats_dict[number]
+        name = ROSTER.get(number, f'#{number}')
+        touch = s['block_touch_own'] + s['block_touch_opp']
+        if s['block_attempts'] == 0:
+            continue
+        print(f"{name:<10}{s['block_attempts']:>5}{s['block_points']:>5}{touch:>7}"
+              f"{s['block_touch_own']:>7}{s['block_touch_opp']:>9}{s['block_errors']:>5}")
+
+
+def print_serve_table(stats_dict):
+    header = f"{'選手':<10}{'打数':>5}{'エース':>7}{'ミス':>5}{'エース率':>9}{'ミス率':>8}{'効果率':>8}"
+    print(header)
+    print('-' * len(header))
+    for number in sorted(stats_dict.keys()):
+        s = stats_dict[number]
+        name = ROSTER.get(number, f'#{number}')
+        if s['serve_attempts'] == 0:
+            continue
+        ace_rate = s['serve_aces'] / s['serve_attempts']
+        err_rate = s['serve_errors'] / s['serve_attempts']
+        efficiency = (s['serve_aces'] - s['serve_errors']) / s['serve_attempts']
+        print(f"{name:<10}{s['serve_attempts']:>5}{s['serve_aces']:>7}{s['serve_errors']:>5}"
+              f"{ace_rate:>9.1%}{err_rate:>8.1%}{efficiency:>8.1%}")
+
+
+def print_receive_table(stats_dict):
+    header = (f"{'選手':<10}{'本数':>5}{'A':>5}{'B':>5}{'C':>5}{'D':>5}"
+              f"{'ミス':>5}{'返球率':>8}{'A率':>7}")
+    print(header)
+    print('-' * len(header))
+    for number in sorted(stats_dict.keys()):
+        s = stats_dict[number]
+        name = ROSTER.get(number, f'#{number}')
+        if s['receive_attempts'] == 0:
+            continue
+        return_rate = (s['receive_attempts'] - s['receive_errors']) / s['receive_attempts']
+        a_rate = s['receive_a'] / s['receive_attempts']
+        print(f"{name:<10}{s['receive_attempts']:>5}{s['receive_a']:>5}{s['receive_b']:>5}"
+              f"{s['receive_c']:>5}{s['receive_d']:>5}{s['receive_errors']:>5}{return_rate:>8.1%}{a_rate:>7.1%}")
+
+
+def fmt_pct(v):
+    return '-' if v is None else f'{v:.1%}'
+
+
+def print_rotation_table(rows, title):
+    """rotation_summary()が返す行リストから、ローテーション×攻撃タイプの表を表示する"""
+    print(f'\n--- {title} ---')
+    header = f"{'ローテ':<6}{'打数':>5}{'得点':>5}{'ミス':>5}{'決定率':>7}"
+    for cat in CATEGORY_ORDER:
+        header += f"{CATEGORY_LABELS[cat] + '本数':>9}{'決定率':>7}"
+    print(header)
+    print('-' * len(header))
+    for row in rows:
+        label = f"S{row['rotation']}" if isinstance(row['rotation'], int) else row['rotation']
+        line = f"{label:<6}{row['attempts']:>5}{row['points']:>5}{row['errors']:>5}{fmt_pct(row['kill_rate']):>7}"
+        for cat in CATEGORY_ORDER:
+            c = row['categories'][cat]
+            line += f"{c['attempts']:>9}{fmt_pct(c['kill_rate']):>7}"
+        print(line)
+
+
+def main():
+    content = load_file(FILE_PATH)
+    own_marker = get_own_team_marker(content)
+    back_attack_combos = get_back_attack_combos(content)
+    combo_categories = get_combo_categories(content)
+    match_date = get_match_date(content)
+
+    scout_section = get_section(content, '3SCOUT')
+    # ※以前はここで l.split(';')[0] として行の後半(得点・ローテーション情報)を
+    # 切り捨てていましたが、ローテーション別攻撃分布の集計に必要なので
+    # 行全体をそのまま残すように変更しました
+    all_lines = [l for l in scout_section.splitlines() if l.strip()]
+
+    sets_lines = split_into_sets(all_lines)
+    all_set_stats = [analyze_set(s, own_marker, back_attack_combos) for s in sets_lines]
+    total_stats = merge_stats(all_set_stats)
+    all_rotation_stats = [analyze_rotation_attacks(s, own_marker, combo_categories) for s in sets_lines]
+    all_side_out_break = [analyze_side_out_break(s, own_marker) for s in sets_lines]
+    all_side_out_break_by_rotation = [analyze_side_out_break_by_rotation(s, own_marker) for s in sets_lines]
+    all_player_rotation_attacks = [analyze_player_rotation_attacks(s, own_marker) for s in sets_lines]
+    all_score_progression = [analyze_score_progression(s, own_marker) for s in sets_lines]
+    all_starting_lineups = [get_starting_lineup(s, own_marker) for s in sets_lines]
+
+    print_report(all_set_stats, total_stats, all_rotation_stats, all_side_out_break)
+
+    dashboard_data = build_dashboard_data(
+        all_set_stats, total_stats, match_date, all_rotation_stats, all_side_out_break,
+        all_score_progression, all_side_out_break_by_rotation, all_player_rotation_attacks,
+        all_starting_lineups)
+
+    data_relpath = save_match_data(dashboard_data, TEAM, match_date, OPPONENT_NAME)
+    matches = update_manifest(TEAM, match_date, OPPONENT_NAME, data_relpath)
+    shell_path = generate_dashboard_shell(TEAM, TEAM_LABEL)
+
+    print(f'\n試合データを保存しました: {os.path.join(TEAM, data_relpath)}')
+    print(f'ダッシュボード（共通1枚）を更新しました: {shell_path}')
+    print(f'このチームの試合一覧: {len(matches)}試合')
+    print(f'\n{TEAM}フォルダの中身（index.html, matches.json, data/フォルダ全部）を'
+          f'GitHubへアップロードしてください。以前アップロードした古いindex.htmlは上書きされます。')
+
+
+if __name__ == '__main__':
+    main()
