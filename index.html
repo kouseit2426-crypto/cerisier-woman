@@ -300,6 +300,12 @@
       <div id="comparisonBody"></div>
     </div>
 
+    <div class="card" id="startingLineupsCard">
+      <h3 class="section-label" style="margin-top:0">スタメン（セットごとの開始時点）</h3>
+      <p class="hint" style="margin-top:-6px">P1が基本的にサーブ位置（次に回転して前衛に上がる並び）です。</p>
+      <div id="startingLineupsAllBody"></div>
+    </div>
+
     <div class="card" id="leaderboardCard">
       <h3 class="section-label" id="leaderboardLabel" style="margin-top:0">選手ランキング（この試合）</h3>
       <p class="hint" style="margin-top:-6px">
@@ -331,9 +337,6 @@
       </p>
       <div class="player-grid" id="scoreProgressionSetButtons"></div>
       <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
-      <h3 class="section-label" id="startingLineupLabel">スタメン（このセット開始時点）</h3>
-      <p class="hint" style="margin-top:-6px">P1が基本的にサーブ位置（次に回転して前衛に上がる並び）です。</p>
-      <div id="startingLineupBody"></div>
       <h3 class="section-label" id="runHighlightsLabel">セットごとの流れハイライト</h3>
       <div id="runHighlightsBody"></div>
     </div>
@@ -1545,17 +1548,24 @@ function scoreChartSvg(points, title, ownLabel, opponentLabel) {
        + `</div></div>`;
 }
 
-// ==================== セット開始時点のスタメン（P1〜P6） ====================
-function startingLineupHtml(lineup) {
-  if (!lineup || !lineup.length) return '<p class="hint">このセットのスタメン情報は取得できませんでした（この試合を追加した時点では未対応でした）。</p>';
-  let html = '<div class="stat-tiles">';
-  lineup.forEach((number, i) => {
-    const name = ROSTER[number] || `#${number}`;
-    html += `<div class="stat-tile"><div class="k">P${i + 1}</div>`
-      + `<div class="v" style="font-size:15px">${escapeHtml(name)}<br>`
-      + `<span style="font-size:12px;font-weight:400">#${number}</span></div></div>`;
-  });
-  html += '</div>';
+// ==================== セットごとの開始時点のスタメン（P1〜P6） ====================
+// 選手ランキングのすぐ上に、全セット分をまとめて表で見せる（1試合を選んでいるときのみ）
+function startingLineupsAllSetsHtml(bySet) {
+  const withLineup = (bySet || []).filter(s => s.startingLineup && s.startingLineup.length);
+  if (!withLineup.length) return '<p class="hint">スタメン情報を取得できませんでした（この試合を追加した時点では未対応でした）。</p>';
+  let html = '<div style="overflow-x:auto"><table class="rotation-table comparison-table"><thead><tr><th>ポジション</th>';
+  withLineup.forEach(s => { html += `<th>第${s.setNumber}セット</th>`; });
+  html += '</tr></thead><tbody>';
+  for (let i = 0; i < 6; i++) {
+    html += `<tr><td>P${i + 1}</td>`;
+    withLineup.forEach(s => {
+      const number = s.startingLineup[i];
+      const name = ROSTER[number] || `#${number}`;
+      html += `<td>${escapeHtml(name)}<br><span style="font-size:11px;color:var(--text-muted)">#${number}</span></td>`;
+    });
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
   return html;
 }
 
@@ -1564,7 +1574,6 @@ function selectScoreProgressionSet(s, chipEl) {
   chipEl.classList.add('selected');
   document.getElementById('scoreProgressionChartArea').innerHTML =
     scoreChartSvg(s.points, `第${s.setNumber}セット`, DATA.teamLabel, DATA.opponent);
-  document.getElementById('startingLineupBody').innerHTML = startingLineupHtml(s.startingLineup);
 }
 
 function showScoreProgressionCharts() {
@@ -1582,10 +1591,8 @@ function showScoreProgressionCharts() {
   if (DATA.scoreProgression.bySet.length) {
     const first = DATA.scoreProgression.bySet[0];
     chartEl.innerHTML = scoreChartSvg(first.points, `第${first.setNumber}セット`, DATA.teamLabel, DATA.opponent);
-    document.getElementById('startingLineupBody').innerHTML = startingLineupHtml(first.startingLineup);
   } else {
     chartEl.innerHTML = '';
-    document.getElementById('startingLineupBody').innerHTML = '';
   }
   document.getElementById('runHighlightsBody').innerHTML = runHighlightsHtml(DATA.scoreProgression);
 }
@@ -1921,9 +1928,12 @@ function showSingleMatch(data, entries, dataList) {
   showPage(1);
   renderSingleMatchPlayerView();
   if (combined) {
+    document.getElementById('startingLineupsAllBody').innerHTML =
+      '<p class="hint">スタメンは1試合を選んでいるときに表示されます。</p>';
     document.getElementById('leaderboardLabel').textContent = `選手ランキング（選んだ${entries.length}試合の合計）`;
     document.getElementById('leaderboardBody').innerHTML = playerLeaderboardHtml(combinedPlayerTotalsList(dataList));
   } else {
+    document.getElementById('startingLineupsAllBody').innerHTML = startingLineupsAllSetsHtml(DATA.scoreProgression.bySet);
     document.getElementById('leaderboardLabel').textContent = '選手ランキング（この試合）';
     document.getElementById('leaderboardBody').innerHTML = playerLeaderboardHtml(DATA.total || []);
   }
