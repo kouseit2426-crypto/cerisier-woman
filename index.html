@@ -331,6 +331,9 @@
       </p>
       <div class="player-grid" id="scoreProgressionSetButtons"></div>
       <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
+      <h3 class="section-label" id="startingLineupLabel">スタメン（このセット開始時点）</h3>
+      <p class="hint" style="margin-top:-6px">P1が基本的にサーブ位置（次に回転して前衛に上がる並び）です。</p>
+      <div id="startingLineupBody"></div>
       <h3 class="section-label" id="runHighlightsLabel">セットごとの流れハイライト</h3>
       <div id="runHighlightsBody"></div>
     </div>
@@ -851,6 +854,20 @@ function dvAnalyzeScoreProgression(linesInSet, ownMarker) {
   return points;
 }
 
+// ==================== セット開始時点のスタメン（自チームのP1〜P6の背番号）を取り出す ====================
+// ローテーション追跡と同じ、行末のならび(fields[14:20]がホーム、fields[20:26]がアウェイ)を使う。
+// そのセットで最初に6人分そろって出てくる行が、そのセットのスタメンにあたる。
+function dvGetStartingLineup(linesInSet, ownMarker) {
+  for (const line of linesInSet) {
+    const fields = line.split(';');
+    if (fields.length < 26) continue;
+    const ownFields = ownMarker === '*' ? fields.slice(14, 20) : fields.slice(20, 26);
+    if (ownFields.some(v => v === '')) continue;
+    return ownFields.map(v => parseInt(v, 10));
+  }
+  return null;
+}
+
 function dvMergeStats(allSetStats) {
   const total = {};
   allSetStats.forEach(setStats => {
@@ -913,6 +930,7 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
   const allSideOutBreakByRotation = setsLines.map(s => dvAnalyzeSideOutBreakByRotation(s, ownMarker));
   const allPlayerRotationAttacks = setsLines.map(s => dvAnalyzePlayerRotationAttacks(s, ownMarker));
   const allScoreProgression = setsLines.map(s => dvAnalyzeScoreProgression(s, ownMarker));
+  const allStartingLineups = setsLines.map(s => dvGetStartingLineup(s, ownMarker));
 
   const numbers = Object.keys(totalStats).map(Number).sort((a, b) => a - b);
 
@@ -950,7 +968,9 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
       })(),
     },
     scoreProgression: {
-      bySet: allScoreProgression.map((points, i) => ({ setNumber: i + 1, points })),
+      bySet: allScoreProgression.map((points, i) => ({
+        setNumber: i + 1, points, startingLineup: allStartingLineups[i],
+      })),
     },
   };
 }
@@ -1525,11 +1545,26 @@ function scoreChartSvg(points, title, ownLabel, opponentLabel) {
        + `</div></div>`;
 }
 
+// ==================== セット開始時点のスタメン（P1〜P6） ====================
+function startingLineupHtml(lineup) {
+  if (!lineup || !lineup.length) return '<p class="hint">このセットのスタメン情報は取得できませんでした（この試合を追加した時点では未対応でした）。</p>';
+  let html = '<div class="stat-tiles">';
+  lineup.forEach((number, i) => {
+    const name = ROSTER[number] || `#${number}`;
+    html += `<div class="stat-tile"><div class="k">P${i + 1}</div>`
+      + `<div class="v" style="font-size:15px">${escapeHtml(name)}<br>`
+      + `<span style="font-size:12px;font-weight:400">#${number}</span></div></div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
 function selectScoreProgressionSet(s, chipEl) {
   document.querySelectorAll('#scoreProgressionSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
   chipEl.classList.add('selected');
   document.getElementById('scoreProgressionChartArea').innerHTML =
     scoreChartSvg(s.points, `第${s.setNumber}セット`, DATA.teamLabel, DATA.opponent);
+  document.getElementById('startingLineupBody').innerHTML = startingLineupHtml(s.startingLineup);
 }
 
 function showScoreProgressionCharts() {
@@ -1547,8 +1582,10 @@ function showScoreProgressionCharts() {
   if (DATA.scoreProgression.bySet.length) {
     const first = DATA.scoreProgression.bySet[0];
     chartEl.innerHTML = scoreChartSvg(first.points, `第${first.setNumber}セット`, DATA.teamLabel, DATA.opponent);
+    document.getElementById('startingLineupBody').innerHTML = startingLineupHtml(first.startingLineup);
   } else {
     chartEl.innerHTML = '';
+    document.getElementById('startingLineupBody').innerHTML = '';
   }
   document.getElementById('runHighlightsBody').innerHTML = runHighlightsHtml(DATA.scoreProgression);
 }
