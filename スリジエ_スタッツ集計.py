@@ -20,6 +20,16 @@ OPPONENT_NAME = "江戸川大学"
 # 出力フォルダ・ページのタイトルが自動的に男子用に切り替わる
 TEAM = 'women'
 
+# ---- 映像連携（プレー動画へのリンク）用の設定。使わない試合は空のままでOK ----
+# YouTube（限定公開）などにアップロードした、その試合の動画のURL。
+# 空のままにしておくと、ダッシュボード側で映像リンクの表示自体が出なくなる。
+VIDEO_URL = ''
+# 「動画の何秒目が、.dvwの中の時刻（壁時計）の何時何分何秒に対応するか」の差分（秒）。
+# 動画を実際に見て、分かっているプレーの動画上の秒数から、
+# 動画秒数 - その行の壁時計の秒数（真夜中から数えて） で計算する。
+# 分からない場合はNoneのままにしておくと、映像リンクは計算されない。
+VIDEO_OFFSET_SECONDS = None
+
 # ※出力ファイル名は「試合日_対戦相手.html」の形で自動的に決まるので、
 # ここを手で書き換える必要はもうありません（build_output_filename関数を参照）
 # 保存先も women/ または men/ フォルダに自動で分かれます
@@ -185,6 +195,21 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .player-chip.selected { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
   .player-chip.team-chip { font-weight: 600; border-color: var(--series-orange); color: var(--series-orange); }
   .player-chip.team-chip.selected { background: var(--series-orange); border-color: var(--series-orange); color: #fff; }
+
+  .video-clip-groups { display: flex; flex-wrap: wrap; gap: 10px; }
+  .video-clip-list { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+  .video-clip-link {
+    font-size: 12.5px; text-decoration: none; color: var(--text-primary);
+    padding: 5px 10px; border-radius: 14px; border: 1px solid var(--border);
+    background: var(--page-plane);
+  }
+  .video-clip-link:hover { background: var(--grid); }
+  .video-clip-link.playing { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
+  .video-player-wrap {
+    position: relative; width: 100%; max-width: 520px; aspect-ratio: 16 / 9;
+    margin: 4px 0 16px; background: #000; border-radius: 10px; overflow: hidden;
+  }
+  .video-player-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 
   .match-bar { margin-bottom: 18px; }
   .match-bar .label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
@@ -370,6 +395,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
       <h3 class="section-label" id="receiveSectionLabel">レシーブ（全セット合計）</h3>
       <div class="stat-tiles" id="receiveTiles"></div>
+
+      <div id="videoClipsSection" style="display:none">
+        <h3 class="section-label">プレー映像</h3>
+        <p class="hint" style="margin-top:-6px">
+          プレーを押すと、その場面からすぐに動画が再生されます（動画側の時刻合わせが多少ずれることがあります）。
+        </p>
+        <div class="video-player-wrap" id="videoPlayerWrap" style="display:none">
+          <iframe id="videoPlayerFrame" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+        </div>
+        <div id="videoClipsBody"></div>
+      </div>
 
       <p class="hint" id="errorBreakdownLine" style="display:none;margin-top:16px;margin-bottom:0"></p>
     </div>
@@ -972,6 +1008,33 @@ function dvGetStartingLineup(linesInSet, ownMarker) {
   return null;
 }
 
+// 'HH.MM.SS'形式の時刻表記を、真夜中からの経過秒数に変換する
+function dvParseWallclockSeconds(t) {
+  const [h, m, s] = t.split('.').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m) || Number.isNaN(s)) return null;
+  return h * 3600 + m * 60 + s;
+}
+
+// 映像連携用に、自チームのアタック・ブロック・サーブ・レシーブ1本ごとの記録
+// （誰が・どの評価で・壁時計の何時何分何秒か）を全部リストにしておく。
+// 動画側の秒数への変換は、offsetSeconds が分かってから表示側で行う。
+function dvBuildPlayLog(linesInSet, ownMarker) {
+  const plays = [];
+  linesInSet.forEach(line => {
+    const fields = line.split(';');
+    const code = fields[0];
+    const m = DV_ACTION_RE.exec(code);
+    if (!m) return;
+    const team = m[1], playerNum = m[2], skill = m[3], evaluation = m[5];
+    if (team !== ownMarker) return;
+    if (fields.length <= 7 || !fields[7]) return;
+    const wallclock = dvParseWallclockSeconds(fields[7]);
+    if (wallclock === null) return;
+    plays.push({ number: parseInt(playerNum, 10), skill, evaluation, wallclock });
+  });
+  return plays;
+}
+
 function dvMergeStats(allSetStats) {
   const total = {};
   allSetStats.forEach(setStats => {
@@ -1035,6 +1098,7 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
   const allPlayerRotationAttacks = setsLines.map(s => dvAnalyzePlayerRotationAttacks(s, ownMarker));
   const allScoreProgression = setsLines.map(s => dvAnalyzeScoreProgression(s, ownMarker));
   const allStartingLineups = setsLines.map(s => dvGetStartingLineup(s, ownMarker));
+  const allPlayLogs = setsLines.map(s => dvBuildPlayLog(s, ownMarker));
 
   const numbers = Object.keys(totalStats).map(Number).sort((a, b) => a - b);
 
@@ -1075,6 +1139,13 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
       bySet: allScoreProgression.map((points, i) => ({
         setNumber: i + 1, points, startingLineup: allStartingLineups[i],
       })),
+    },
+    // ブラウザに直接ドラッグ&ドロップした試合には、まだ動画URL・時刻合わせ情報が
+    // ないので空にしておく（Python側で処理した試合には入ることがある）。
+    video: {
+      url: '',
+      offsetSeconds: null,
+      plays: allPlayLogs.flatMap((setPlays, i) => setPlays.map(p => ({ setNumber: i + 1, ...p }))),
     },
   };
 }
@@ -1370,6 +1441,22 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
   } else {
     receiveLabel.style.display = 'none';
     receiveTiles.style.display = 'none';
+  }
+
+  // プレー映像（動画URLが設定されている試合だけ表示される）。選手を切り替えたら、
+  // 前の選手の動画が再生されたままにならないように、プレーヤーは毎回リセットする
+  const videoSection = document.getElementById('videoClipsSection');
+  const videoBody = videoClipsHtml(totalStats.number);
+  const videoPlayerWrap = document.getElementById('videoPlayerWrap');
+  const videoPlayerFrame = document.getElementById('videoPlayerFrame');
+  if (videoPlayerWrap) videoPlayerWrap.style.display = 'none';
+  if (videoPlayerFrame) videoPlayerFrame.src = '';
+  if (videoBody) {
+    videoSection.style.display = '';
+    document.getElementById('videoClipsBody').innerHTML = videoBody;
+  } else {
+    videoSection.style.display = 'none';
+    document.getElementById('videoClipsBody').innerHTML = '';
   }
 
   // ミスの内訳（控えめに一行だけ。派手な表やグラフにはしない）
@@ -1925,6 +2012,113 @@ function showSideOutBreakTableCombined(entries, dataList) {
   const insight = rotationInsightText(combinedByRotation);
   document.getElementById('rotationInsightLine').style.display = insight ? '' : 'none';
   document.getElementById('rotationInsightLine').textContent = insight;
+}
+
+// ==================== プレー映像（統計を押すとその場面の動画がすぐ再生される機能） ====================
+// YouTubeの動画URL（通常URL・短縮URLどちらも）からvideo IDだけを取り出す。
+// YouTube以外や、形式が読み取れないURLの場合はnullを返す。
+function extractYouTubeId(url) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('youtu.be')) {
+      return u.pathname.replace(/^\//, '') || null;
+    }
+    if (u.hostname.includes('youtube.com')) {
+      if (u.searchParams.get('v')) return u.searchParams.get('v');
+      const m = u.pathname.match(/\/embed\/([^/?]+)/);
+      if (m) return m[1];
+    }
+  } catch (e) {
+    // 何もしない（下でnullを返す）
+  }
+  return null;
+}
+
+// 指定した秒数から、そのプレーの動画をすぐに再生する。
+// YouTubeのURLなら埋め込みプレーヤーで自動再生、それ以外は新しいタブで開く。
+function playVideoClip(seconds, btnEl) {
+  const video = DATA && DATA.video;
+  if (!video || !video.url) return;
+  const videoId = extractYouTubeId(video.url);
+  const wrap = document.getElementById('videoPlayerWrap');
+  const frame = document.getElementById('videoPlayerFrame');
+  if (videoId && wrap && frame) {
+    frame.src = `https://www.youtube.com/embed/${videoId}?start=${seconds}&autoplay=1`;
+    wrap.style.display = '';
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else {
+    window.open(videoLinkForSeconds(video.url, seconds), '_blank', 'noopener');
+  }
+  document.querySelectorAll('.video-clip-link.playing').forEach(el => el.classList.remove('playing'));
+  if (btnEl) btnEl.classList.add('playing');
+}
+
+// YouTube以外のホスティング（埋め込み再生に対応できない場合）向けのフォールバック。
+// URLに「t=◯◯s」を付け足して、その秒数から再生が始まるリンクを作る。
+function videoLinkForSeconds(url, seconds) {
+  try {
+    const u = new URL(url);
+    u.searchParams.set('t', seconds + 's');
+    return u.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
+const VIDEO_CLIP_CATEGORIES = [
+  { key: 'attack_kill', label: 'アタック決定', skill: 'A', evaluation: '#' },
+  { key: 'attack_error', label: 'アタックミス', skill: 'A', evaluation: '=' },
+  { key: 'serve_ace', label: 'サーブエース', skill: 'S', evaluation: '#' },
+  { key: 'serve_error', label: 'サーブミス', skill: 'S', evaluation: '=' },
+  { key: 'receive_a', label: 'レシーブ（Aパス）', skill: 'R', evaluation: '#' },
+  { key: 'receive_error', label: 'レシーブミス', skill: 'R', evaluation: '=' },
+  { key: 'block_point', label: 'ブロック得点', skill: 'B', evaluation: '#' },
+];
+
+// 選手番号を指定して、その選手のプレー映像（カテゴリ別のボタン＋開くと出てくる
+// タイムスタンプ一覧）のHTMLを作る。カテゴリのボタンを押すと、その一番最初の
+// プレーがすぐに再生される（他のプレーを見たいときは、下に出てくる一覧から選べる）。
+// 試合に動画URL・時刻合わせが設定されていない場合や、選手番号が分からない場合
+// （複数試合の合算表示など）は空文字を返す。
+function videoClipsHtml(playerNumber) {
+  const video = DATA && DATA.video;
+  if (!video || !video.url || video.offsetSeconds === null || video.offsetSeconds === undefined) return '';
+  if (playerNumber === null || playerNumber === undefined) return '';
+  const plays = (video.plays || []).filter(p => p.number === playerNumber);
+  if (!plays.length) return '';
+
+  let html = '<div class="video-clip-groups">';
+  let any = false;
+  VIDEO_CLIP_CATEGORIES.forEach(cat => {
+    const matched = plays.filter(p => p.skill === cat.skill && p.evaluation === cat.evaluation);
+    if (!matched.length) return;
+    any = true;
+    const groupId = 'videoGroup_' + cat.key + '_' + playerNumber;
+    const withSeconds = matched.map(p => ({
+      ...p, videoSeconds: Math.max(0, Math.round(p.wallclock + video.offsetSeconds)),
+    }));
+    const firstSeconds = withSeconds[0].videoSeconds;
+    html += `<div class="video-clip-group">`
+      + `<button type="button" class="player-chip" `
+      + `onclick="playVideoClip(${firstSeconds}); toggleVideoClipGroup('${groupId}')">`
+      + `${cat.label}（${matched.length}）</button>`
+      + `<div id="${groupId}" class="video-clip-list" style="display:none;margin-top:8px">`
+      + withSeconds.map(p => {
+          const mm = Math.floor(p.videoSeconds / 60);
+          const ss = String(p.videoSeconds % 60).padStart(2, '0');
+          return `<button type="button" class="video-clip-link" onclick="playVideoClip(${p.videoSeconds}, this)">`
+            + `第${p.setNumber}セット ${mm}:${ss}</button>`;
+        }).join('')
+      + '</div></div>';
+  });
+  html += '</div>';
+  return any ? html : '';
+}
+
+function toggleVideoClipGroup(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 
 // ==================== 得点パターン（どうやって得点し、どうやって失点しているか） ====================
@@ -3324,6 +3518,43 @@ def get_starting_lineup(lines_in_set, own_marker):
     return None
 
 
+def parse_wallclock_seconds(t):
+    """'10.05.28' のような時刻表記を、真夜中からの経過秒数に変換する"""
+    h, m, s = t.split('.')
+    return int(h) * 3600 + int(m) * 60 + int(s)
+
+
+def build_play_log(lines_in_set, own_marker):
+    """
+    映像連携（プレーを押すとその場面の動画に飛べる機能）用に、自チームの
+    アタック・ブロック・サーブ・レシーブそれぞれの1本ごとの記録（誰が・どの評価で・
+    壁時計の何時何分何秒か）を全部リストにしておく。動画側の秒数への変換は、
+    試合ごとのVIDEO_OFFSET_SECONDSを使って表示側（HTML/JS）で行う
+    （動画のズレが分かったときに、この関数をやり直さずに直せるように）。
+    """
+    plays = []
+    for line in lines_in_set:
+        fields = line.split(';')
+        code = fields[0]
+        m = ACTION_RE.match(code)
+        if not m:
+            continue
+        team, player_num, skill, skill_type, evaluation, combo = m.groups()
+        if team != own_marker:
+            continue
+        if len(fields) <= 7 or not fields[7]:
+            continue
+        try:
+            wallclock = parse_wallclock_seconds(fields[7])
+        except ValueError:
+            continue
+        plays.append({
+            'number': int(player_num), 'skill': skill, 'evaluation': evaluation,
+            'wallclock': wallclock,
+        })
+    return plays
+
+
 def merge_stats(all_set_stats):
     """複数セット分の集計を、選手ごとに合計する"""
     total = {}
@@ -3465,7 +3696,8 @@ def team_stats(stats_dict):
 
 def build_dashboard_data(all_set_stats, total_stats, match_date, all_rotation_stats, all_side_out_break,
                           all_score_progression, all_side_out_break_by_rotation=None,
-                          all_player_rotation_attacks=None, all_starting_lineups=None):
+                          all_player_rotation_attacks=None, all_starting_lineups=None,
+                          all_play_logs=None):
     """ダッシュボード(HTML)に埋め込むためのデータをまとめる"""
     numbers = sorted(total_stats.keys())
     merged_sob_by_rotation = (
@@ -3529,6 +3761,18 @@ def build_dashboard_data(all_set_stats, total_stats, match_date, all_rotation_st
                 }
                 for i, points in enumerate(all_score_progression)
             ],
+        },
+        'video': {
+            'url': VIDEO_URL,
+            'offsetSeconds': VIDEO_OFFSET_SECONDS,
+            'plays': (
+                [
+                    {'setNumber': i + 1, **p}
+                    for i, set_plays in enumerate(all_play_logs)
+                    for p in set_plays
+                ]
+                if all_play_logs else []
+            ),
         },
     }
 
@@ -3717,13 +3961,14 @@ def main():
     all_player_rotation_attacks = [analyze_player_rotation_attacks(s, own_marker) for s in sets_lines]
     all_score_progression = [analyze_score_progression(s, own_marker) for s in sets_lines]
     all_starting_lineups = [get_starting_lineup(s, own_marker) for s in sets_lines]
+    all_play_logs = [build_play_log(s, own_marker) for s in sets_lines]
 
     print_report(all_set_stats, total_stats, all_rotation_stats, all_side_out_break)
 
     dashboard_data = build_dashboard_data(
         all_set_stats, total_stats, match_date, all_rotation_stats, all_side_out_break,
         all_score_progression, all_side_out_break_by_rotation, all_player_rotation_attacks,
-        all_starting_lineups)
+        all_starting_lineups, all_play_logs)
 
     data_relpath = save_match_data(dashboard_data, TEAM, match_date, OPPONENT_NAME)
     matches = update_manifest(TEAM, match_date, OPPONENT_NAME, data_relpath)
