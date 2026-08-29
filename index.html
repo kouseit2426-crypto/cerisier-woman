@@ -308,10 +308,28 @@
         <tbody id="detailSetBody"></tbody>
       </table>
 
-      <div id="detailTechSection" style="display:none">
-        <h3 class="section-label">打法別（アタック・全セット合計）</h3>
-        <p class="hint" style="margin-top:-6px">強打＝しっかり打ち込んだ攻撃、フェイント＝相手コートへ軽く落とす攻撃です。</p>
-        <div class="stat-tiles" id="detailTechBody"></div>
+      <div id="detailHardSection" style="display:none">
+        <h3 class="section-label">強打（全セット合計）</h3>
+        <p class="hint" style="margin-top:-6px">しっかり打ち込んだ攻撃（アタックのうち強打だった分）の内訳です。</p>
+        <div class="stat-tiles" id="detailHardTiles"></div>
+        <table>
+          <thead>
+            <tr><th id="detailHardSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th></tr>
+          </thead>
+          <tbody id="detailHardBody"></tbody>
+        </table>
+      </div>
+
+      <div id="detailFeintSection" style="display:none">
+        <h3 class="section-label">フェイント（全セット合計）</h3>
+        <p class="hint" style="margin-top:-6px">相手コートへ軽く落とす攻撃（アタックのうちフェイントだった分）の内訳です。</p>
+        <div class="stat-tiles" id="detailFeintTiles"></div>
+        <table>
+          <thead>
+            <tr><th id="detailFeintSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th></tr>
+          </thead>
+          <tbody id="detailFeintBody"></tbody>
+        </table>
       </div>
 
       <div id="detailRotationSection" style="display:none">
@@ -1393,19 +1411,40 @@ function setupSidebarToggle() {
   });
 }
 
-// 個人／チームのアタック内訳を、打法（強打／フェイント／その他）別に表示する
-// （tech_hard_attempts等のフラットなキーを使う。選手ごとの集計に使っている。2026-08-29追加）
-function attackTechniqueBreakdownHtml(stats) {
-  let html = '';
-  TECH_ORDER.forEach(tech => {
-    const a = stats[`tech_${tech}_attempts`] || 0;
-    const p = stats[`tech_${tech}_points`] || 0;
-    const killRate = stats[`tech_${tech}_kill_rate`];
-    const share = stats.attempts ? a / stats.attempts : null;
-    html += `<div class="stat-tile"><div class="k">${TECH_LABELS[tech]}</div><div class="v">${a}本`
-      + `<div style="font-size:11px;color:var(--text-muted);font-weight:400">全体の${pct(share)}／決定率${pct(killRate)}（${p}本）</div></div></div>`;
+// 個人／チームのアタックを、打法（強打／フェイント）ごとに「アタック」と同じ形
+// （タイル＋セット/試合ごとの内訳表）で表示する（2026-08-29追加）
+function renderTechSection(tech, headerElId, tilesElId, bodyElId, totalStats, setRows, hasMatchLabels) {
+  const attempts = totalStats[`tech_${tech}_attempts`] || 0;
+  const points = totalStats[`tech_${tech}_points`] || 0;
+  const errors = totalStats[`tech_${tech}_errors`] || 0;
+  const killRate = totalStats[`tech_${tech}_kill_rate`];
+
+  document.getElementById(tilesElId).innerHTML = `
+    <div class="stat-tile"><div class="k">打数</div><div class="v">${attempts}</div></div>
+    <div class="stat-tile"><div class="k">得点</div><div class="v">${points}</div></div>
+    <div class="stat-tile"><div class="k">ミス</div><div class="v">${errors}</div></div>
+    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(killRate)}</div></div>
+  `;
+
+  document.getElementById(headerElId).textContent = hasMatchLabels ? '試合' : 'セット';
+
+  const body = document.getElementById(bodyElId);
+  body.innerHTML = '';
+  setRows.forEach(sp => {
+    const a = sp && sp[`tech_${tech}_attempts`];
+    if (sp && a > 0) {
+      const tr = document.createElement('tr');
+      const rowLabel = sp.matchLabel ? escapeHtml(sp.matchLabel) : `第${sp.setNumber}セット`;
+      const p = sp[`tech_${tech}_points`] || 0;
+      const e = sp[`tech_${tech}_errors`] || 0;
+      const kr = sp[`tech_${tech}_kill_rate`];
+      tr.innerHTML = `<td>${rowLabel}</td><td>${a}</td><td>${p}</td><td>${e}</td><td>${pct(kr)}</td>`;
+      body.appendChild(tr);
+    }
   });
-  return html;
+  if (!body.children.length) {
+    body.innerHTML = '<tr><td colspan="5" class="hint">出場記録がありません</td></tr>';
+  }
 }
 
 function markSelected(chipEl) {
@@ -1445,12 +1484,16 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
     setBody.innerHTML = '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
   }
 
-  const techSection = document.getElementById('detailTechSection');
+  const hardSection = document.getElementById('detailHardSection');
+  const feintSection = document.getElementById('detailFeintSection');
   if (totalStats.attempts > 0) {
-    techSection.style.display = '';
-    document.getElementById('detailTechBody').innerHTML = attackTechniqueBreakdownHtml(totalStats);
+    hardSection.style.display = '';
+    feintSection.style.display = '';
+    renderTechSection('hard', 'detailHardSetHeaderLabel', 'detailHardTiles', 'detailHardBody', totalStats, setRows, hasMatchLabels);
+    renderTechSection('feint', 'detailFeintSetHeaderLabel', 'detailFeintTiles', 'detailFeintBody', totalStats, setRows, hasMatchLabels);
   } else {
-    techSection.style.display = 'none';
+    hardSection.style.display = 'none';
+    feintSection.style.display = 'none';
   }
 
   const rotationSection = document.getElementById('detailRotationSection');
@@ -1571,7 +1614,8 @@ function renderSingleMatchPlayerView() {
       document.getElementById('detailTiles').innerHTML = '';
       document.getElementById('detailSetBody').innerHTML =
         '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
-      document.getElementById('detailTechSection').style.display = 'none';
+      document.getElementById('detailHardSection').style.display = 'none';
+      document.getElementById('detailFeintSection').style.display = 'none';
       document.getElementById('detailRotationSection').style.display = 'none';
       return;
     }
@@ -1616,7 +1660,8 @@ function renderCombinedPlayerView(nums) {
         document.getElementById('detailTiles').innerHTML = '';
         document.getElementById('detailSetBody').innerHTML =
           '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
-        document.getElementById('detailTechSection').style.display = 'none';
+        document.getElementById('detailHardSection').style.display = 'none';
+        document.getElementById('detailFeintSection').style.display = 'none';
         document.getElementById('detailRotationSection').style.display = 'none';
         return;
       }
