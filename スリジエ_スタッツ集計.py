@@ -498,6 +498,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。セットを選んでください。
       </p>
       <div class="player-grid" id="rotationSetButtons"></div>
+      <h4 style="margin:16px 0 8px;font-size:14px" id="tossDistributionLabel">トス配分（％）</h4>
+      <div id="tossDistributionBody"></div>
       <div id="rotationTables" style="margin-top:16px"></div>
     </div>
   </div>
@@ -2057,10 +2059,27 @@ function runHighlightsHtml(scoreProgression) {
   return html;
 }
 
+// トス配分（％）：レフト／ライト／ミドル／パイプ／その他に、打数のうち何%が上がったかを表示する
+// （rowsの中の「合計」行＝その選択範囲全体の内訳を使う。2026-08-29追加）
+function tossDistributionHtml(totalRow) {
+  if (!totalRow || !totalRow.attempts) return '<p class="hint">データがありません。</p>';
+  let html = '<div class="stat-tiles">';
+  CATEGORY_ORDER.forEach(cat => {
+    const c = totalRow.categories[cat];
+    const share = totalRow.attempts ? c.attempts / totalRow.attempts : null;
+    html += `<div class="stat-tile"><div class="k">${CATEGORY_LABELS[cat]}</div><div class="v">${pct(share)}`
+      + `<div style="font-size:11px;color:var(--text-muted);font-weight:400">${c.attempts}/${totalRow.attempts}</div></div></div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
 function selectRotationSet(rows, chipEl) {
   document.querySelectorAll('#rotationSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
   chipEl.classList.add('selected');
   document.getElementById('rotationTables').innerHTML = rotationTableHtml(rows);
+  const totalRow = rows.find(r => r.rotation === '合計') || rows[rows.length - 1];
+  document.getElementById('tossDistributionBody').innerHTML = tossDistributionHtml(totalRow);
 }
 
 function showRotationTables() {
@@ -2080,7 +2099,7 @@ function showRotationTables() {
     btnEl.appendChild(chip);
   });
   const last = items[items.length - 1];
-  document.getElementById('rotationTables').innerHTML = rotationTableHtml(last.rows);
+  selectRotationSet(last.rows, btnEl.children[items.length - 1]);
 }
 
 // 試合を2つ以上選んでいるとき：試合ごとのボタン＋「全体」（選んだ試合すべての合計）を並べて選べるようにする
@@ -2106,7 +2125,7 @@ function showRotationTablesCombined(entries, dataList) {
     btnEl.appendChild(chip);
   });
   const last = items[items.length - 1];
-  document.getElementById('rotationTables').innerHTML = rotationTableHtml(last.rows);
+  selectRotationSet(last.rows, btnEl.children[items.length - 1]);
 }
 
 function selectTeam(chipEl) {
