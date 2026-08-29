@@ -303,10 +303,16 @@
       <div class="stat-tiles" id="detailTiles"></div>
       <table>
         <thead>
-          <tr><th id="detailSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th><th>効果率</th></tr>
+          <tr><th id="detailSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>被ブロック</th><th>決定率</th><th>効果率</th></tr>
         </thead>
         <tbody id="detailSetBody"></tbody>
       </table>
+
+      <div id="detailTechSection" style="display:none">
+        <h3 class="section-label">打法別（アタック・全セット合計）</h3>
+        <p class="hint" style="margin-top:-6px">強打＝しっかり打ち込んだ攻撃、フェイント＝相手コートへ軽く落とす攻撃です。</p>
+        <div class="stat-tiles" id="detailTechBody"></div>
+      </div>
 
       <div id="detailRotationSection" style="display:none">
         <h3 class="section-label">ローテーション別（アタック・全セット合計）</h3>
@@ -409,7 +415,15 @@
       </p>
       <div class="player-grid" id="rotationSetButtons"></div>
       <h4 style="margin:16px 0 8px;font-size:14px" id="tossDistributionLabel">トス配分（％）</h4>
+      <p class="hint" style="margin-top:-4px">
+        「その他」はレフト・ライト・ミドル・パイプのどれにも当てはまらない攻撃で、ほとんどがセッターダンプ（ツー）です。
+      </p>
       <div id="tossDistributionBody"></div>
+      <h4 style="margin:16px 0 8px;font-size:14px" id="attackTechniqueLabel">打法（％）</h4>
+      <p class="hint" style="margin-top:-4px">
+        強打＝しっかり打ち込んだ攻撃、フェイント＝相手コートへ軽く落とす攻撃です。
+      </p>
+      <div id="attackTechniqueBody"></div>
       <div id="rotationTables" style="margin-top:16px"></div>
     </div>
   </div>
@@ -428,6 +442,26 @@
 const CATEGORY_ORDER = ['left', 'right', 'middle', 'pipe', 'other'];
 const CATEGORY_LABELS = { left: 'レフト', right: 'ライト', middle: 'ミドル', pipe: 'パイプ', other: 'その他' };
 const COMBO_CATEGORY_MAP = { F: 'left', B: 'right', C: 'middle', P: 'pipe' };
+// VolleyStationのテンプレートの説明文と実際の運用が食い違うコンビコードの個別補正
+// （P2はテンプレート上「緊急時の2段トス攻撃」だが、実際は「短いレフトのハイセット」として
+// 使われている。こうせいさんの説明により2026-08-29確認）
+const COMBO_CATEGORY_OVERRIDES = { P2: 'left' };
+// 打法（強打／フェイント）：H=強打、T=フェイント（こうせいさんに確認、2026-08-29）。
+// ※このH/Tはスキル直後の1文字（例 "*05AH#P5"の"H"）ではなく、コードの末尾側
+// （'~'区切りの最後のかたまり。例 "*05AH#P5~24~H2"の"H2"）に入っている「ショットタイプ」の文字。
+// スキル直後の文字は実データを見るとM/H/Q/N/Oで、これは「トスのテンポ」を表しており、
+// 強打/フェイントの区別ではなかった（2026-08-29、実データで確認）。
+const TECH_ORDER = ['hard', 'feint', 'other'];
+const TECH_LABELS = { hard: '強打', feint: 'フェイント', other: 'その他' };
+const DV_ATTACK_SHOT_TYPE_RE = /([A-Z])(\d)/;
+
+// アタックの生コード全体（例 '*05AH#P5~24~H2'）から、末尾の「ショットタイプ」文字を取り出す
+function dvAttackShotType(code) {
+  const parts = code.split('~');
+  if (parts.length < 2) return null;
+  const m = DV_ATTACK_SHOT_TYPE_RE.exec(parts[parts.length - 1]);
+  return m ? m[1] : null;
+}
 
 const DV_SCORE_RE = /^([*a])p(\d+):(\d+)/;
 const DV_ACTION_RE = /^([*a])(\d\d)([ABSR])([A-Za-z])([#+\-!=/])([A-Z0-9]{2})?/;
@@ -441,7 +475,7 @@ function dvRate(numerator, denominator) {
 }
 
 function dvEmptyPlayerStats() {
-  return {
+  const stats = {
     attempts: 0, points: 0, errors: 0, blocked: 0,
     back_attempts: 0, back_points: 0, back_errors: 0,
     block_attempts: 0, block_points: 0, block_errors: 0,
@@ -450,12 +484,21 @@ function dvEmptyPlayerStats() {
     receive_attempts: 0, receive_a: 0, receive_b: 0,
     receive_c: 0, receive_d: 0, receive_errors: 0,
   };
+  // 打法（強打／フェイント／その他）別の選手ごとの内訳（2026-08-29追加）
+  TECH_ORDER.forEach(t => {
+    stats[`tech_${t}_attempts`] = 0;
+    stats[`tech_${t}_points`] = 0;
+    stats[`tech_${t}_errors`] = 0;
+  });
+  return stats;
 }
 
 function dvEmptyRotationEntry() {
   const categories = {};
   CATEGORY_ORDER.forEach(cat => { categories[cat] = { attempts: 0, points: 0, errors: 0 }; });
-  return { attempts: 0, points: 0, errors: 0, categories };
+  const techniques = {};
+  TECH_ORDER.forEach(t => { techniques[t] = { attempts: 0, points: 0, errors: 0 }; });
+  return { attempts: 0, points: 0, errors: 0, categories, techniques };
 }
 
 function dvGetSection(content, name) {
@@ -499,6 +542,7 @@ function dvGetComboCategories(content) {
     const categoryLetter = fields.length > 8 ? fields[8] : '';
     mapping[code] = COMBO_CATEGORY_MAP[categoryLetter] || 'other';
   });
+  Object.assign(mapping, COMBO_CATEGORY_OVERRIDES);
   return mapping;
 }
 
@@ -575,6 +619,13 @@ function dvAnalyzeSet(linesInSet, ownMarker, backAttackCombos) {
       } else if (evaluation === '/') {
         p.blocked += 1;
       }
+
+      // 打法（強打／フェイント／その他）別の内訳も選手ごとに集計する
+      const shot = dvAttackShotType(code);
+      const tech = shot === 'H' ? 'hard' : (shot === 'T' ? 'feint' : 'other');
+      p[`tech_${tech}_attempts`] += 1;
+      if (evaluation === '#') p[`tech_${tech}_points`] += 1;
+      else if (evaluation === '=') p[`tech_${tech}_errors`] += 1;
     } else if (skill === 'B') {
       p.block_attempts += 1;
       if (evaluation === '#') p.block_points += 1;
@@ -628,7 +679,7 @@ function dvAnalyzeRotationAttacks(linesInSet, ownMarker, comboCategories) {
 
     const m = DV_ACTION_RE.exec(code);
     if (!m) return;
-    const team = m[1], skill = m[3], evaluation = m[5], combo = m[6];
+    const team = m[1], skill = m[3], skillType = m[4], evaluation = m[5], combo = m[6];
     if (team !== ownMarker || skill !== 'A') return;
 
     const entry = rotationStats[rotationNumber];
@@ -641,6 +692,14 @@ function dvAnalyzeRotationAttacks(linesInSet, ownMarker, comboCategories) {
     catEntry.attempts += 1;
     if (evaluation === '#') catEntry.points += 1;
     else if (evaluation === '=') catEntry.errors += 1;
+
+    // 打法：コード末尾のショットタイプ文字がH=強打、T=フェイント（こうせいさんの説明、2026-08-29）
+    const shot = dvAttackShotType(code);
+    const tech = shot === 'H' ? 'hard' : (shot === 'T' ? 'feint' : 'other');
+    const techEntry = entry.techniques[tech];
+    techEntry.attempts += 1;
+    if (evaluation === '#') techEntry.points += 1;
+    else if (evaluation === '=') techEntry.errors += 1;
   });
 
   return rotationStats;
@@ -655,6 +714,11 @@ function dvMergeRotationStats(allSetRotationStats) {
       CATEGORY_ORDER.forEach(cat => {
         ['attempts', 'points', 'errors'].forEach(k => {
           total[n].categories[cat][k] += setStats[n].categories[cat][k];
+        });
+      });
+      TECH_ORDER.forEach(t => {
+        ['attempts', 'points', 'errors'].forEach(k => {
+          total[n].techniques[t][k] += setStats[n].techniques[t][k];
         });
       });
     }
@@ -759,10 +823,22 @@ function dvRotationSummary(rotationStats) {
         kill_rate: dvRate(e.categories[cat].points, e.categories[cat].attempts),
       };
     });
+    row.techniques = {};
+    TECH_ORDER.forEach(t => {
+      row.techniques[t] = {
+        attempts: e.techniques[t].attempts,
+        points: e.techniques[t].points,
+        errors: e.techniques[t].errors,
+        kill_rate: dvRate(e.techniques[t].points, e.techniques[t].attempts),
+      };
+    });
     rows.push(row);
     grand.attempts += e.attempts; grand.points += e.points; grand.errors += e.errors;
     CATEGORY_ORDER.forEach(cat => {
       ['attempts', 'points', 'errors'].forEach(k => { grand.categories[cat][k] += e.categories[cat][k]; });
+    });
+    TECH_ORDER.forEach(t => {
+      ['attempts', 'points', 'errors'].forEach(k => { grand.techniques[t][k] += e.techniques[t][k]; });
     });
   }
   const totalRow = {
@@ -777,6 +853,15 @@ function dvRotationSummary(rotationStats) {
       points: grand.categories[cat].points,
       errors: grand.categories[cat].errors,
       kill_rate: dvRate(grand.categories[cat].points, grand.categories[cat].attempts),
+    };
+  });
+  totalRow.techniques = {};
+  TECH_ORDER.forEach(t => {
+    totalRow.techniques[t] = {
+      attempts: grand.techniques[t].attempts,
+      points: grand.techniques[t].points,
+      errors: grand.techniques[t].errors,
+      kill_rate: dvRate(grand.techniques[t].points, grand.techniques[t].attempts),
     };
   });
   rows.push(totalRow);
@@ -991,7 +1076,7 @@ function dvMergeStats(allSetStats) {
 
 function dvPlayerSummary(number, s, roster, name) {
   const attempts = s.attempts, points = s.points, errors = s.errors, blocked = s.blocked;
-  return {
+  const result = {
     number: number,
     name: name !== undefined ? name : ((roster && roster[number]) || ('#' + number)),
     attempts, points, errors, blocked,
@@ -1010,6 +1095,16 @@ function dvPlayerSummary(number, s, roster, name) {
     receive_return_rate: dvRate(s.receive_attempts - s.receive_errors, s.receive_attempts),
     receive_a_rate: dvRate(s.receive_a, s.receive_attempts),
   };
+  TECH_ORDER.forEach(tech => {
+    const tAttempts = s[`tech_${tech}_attempts`];
+    const tPoints = s[`tech_${tech}_points`];
+    const tErrors = s[`tech_${tech}_errors`];
+    result[`tech_${tech}_attempts`] = tAttempts;
+    result[`tech_${tech}_points`] = tPoints;
+    result[`tech_${tech}_errors`] = tErrors;
+    result[`tech_${tech}_kill_rate`] = dvRate(tPoints, tAttempts);
+  });
+  return result;
 }
 
 function dvTeamStats(statsDict) {
@@ -1298,6 +1393,21 @@ function setupSidebarToggle() {
   });
 }
 
+// 個人／チームのアタック内訳を、打法（強打／フェイント／その他）別に表示する
+// （tech_hard_attempts等のフラットなキーを使う。選手ごとの集計に使っている。2026-08-29追加）
+function attackTechniqueBreakdownHtml(stats) {
+  let html = '';
+  TECH_ORDER.forEach(tech => {
+    const a = stats[`tech_${tech}_attempts`] || 0;
+    const p = stats[`tech_${tech}_points`] || 0;
+    const killRate = stats[`tech_${tech}_kill_rate`];
+    const share = stats.attempts ? a / stats.attempts : null;
+    html += `<div class="stat-tile"><div class="k">${TECH_LABELS[tech]}</div><div class="v">${a}本`
+      + `<div style="font-size:11px;color:var(--text-muted);font-weight:400">全体の${pct(share)}／決定率${pct(killRate)}（${p}本）</div></div></div>`;
+  });
+  return html;
+}
+
 function markSelected(chipEl) {
   document.querySelectorAll('.player-chip').forEach(c => c.classList.remove('selected'));
   chipEl.classList.add('selected');
@@ -1313,6 +1423,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
     <div class="stat-tile"><div class="k">打数</div><div class="v">${totalStats.attempts}</div></div>
     <div class="stat-tile"><div class="k">得点</div><div class="v">${totalStats.points}</div></div>
     <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.errors}</div></div>
+    <div class="stat-tile"><div class="k">被ブロック</div><div class="v">${totalStats.blocked}</div></div>
     <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(totalStats.kill_rate)}</div></div>
     <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.efficiency)}</div></div>
   `;
@@ -1326,12 +1437,20 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
     if (sp && sp.attempts > 0) {
       const tr = document.createElement('tr');
       const rowLabel = sp.matchLabel ? escapeHtml(sp.matchLabel) : `第${sp.setNumber}セット`;
-      tr.innerHTML = `<td>${rowLabel}</td><td>${sp.attempts}</td><td>${sp.points}</td><td>${sp.errors}</td><td>${pct(sp.kill_rate)}</td><td>${pct(sp.efficiency)}</td>`;
+      tr.innerHTML = `<td>${rowLabel}</td><td>${sp.attempts}</td><td>${sp.points}</td><td>${sp.errors}</td><td>${sp.blocked}</td><td>${pct(sp.kill_rate)}</td><td>${pct(sp.efficiency)}</td>`;
       setBody.appendChild(tr);
     }
   });
   if (!setBody.children.length) {
-    setBody.innerHTML = '<tr><td colspan="6" class="hint">出場記録がありません</td></tr>';
+    setBody.innerHTML = '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
+  }
+
+  const techSection = document.getElementById('detailTechSection');
+  if (totalStats.attempts > 0) {
+    techSection.style.display = '';
+    document.getElementById('detailTechBody').innerHTML = attackTechniqueBreakdownHtml(totalStats);
+  } else {
+    techSection.style.display = 'none';
   }
 
   const rotationSection = document.getElementById('detailRotationSection');
@@ -1451,7 +1570,8 @@ function renderSingleMatchPlayerView() {
       document.getElementById('detailNumber').textContent = `#${number} ／ この試合の出場記録がありません`;
       document.getElementById('detailTiles').innerHTML = '';
       document.getElementById('detailSetBody').innerHTML =
-        '<tr><td colspan="6" class="hint">出場記録がありません</td></tr>';
+        '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
+      document.getElementById('detailTechSection').style.display = 'none';
       document.getElementById('detailRotationSection').style.display = 'none';
       return;
     }
@@ -1495,7 +1615,8 @@ function renderCombinedPlayerView(nums) {
         document.getElementById('detailNumber').textContent = `#${number} ／ 選んだ${entries.length}試合に出場記録がありません`;
         document.getElementById('detailTiles').innerHTML = '';
         document.getElementById('detailSetBody').innerHTML =
-          '<tr><td colspan="6" class="hint">出場記録がありません</td></tr>';
+          '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
+        document.getElementById('detailTechSection').style.display = 'none';
         document.getElementById('detailRotationSection').style.display = 'none';
         return;
       }
@@ -1572,6 +1693,7 @@ function comparisonTableHtml(players) {
   html += comparisonRowHtml('打数', players, p => p.attempts, false);
   html += comparisonRowHtml('得点', players, p => p.points, false);
   html += comparisonRowHtml('ミス', players, p => p.errors, false);
+  html += comparisonRowHtml('被ブロック', players, p => p.blocked, false);
   html += comparisonRowHtml('決定率', players, p => p.kill_rate, true);
   html += comparisonRowHtml('効果率', players, p => p.efficiency, true);
 
@@ -1984,12 +2106,29 @@ function tossDistributionHtml(totalRow) {
   return html;
 }
 
+// 打法（％）：強打／フェイントに、打数のうち何%が該当するかを表示する
+// （スパイクのタイプ文字H=強打／T=フェイントより。2026-08-29追加）
+function attackTechniqueHtml(totalRow) {
+  if (!totalRow || !totalRow.attempts) return '<p class="hint">データがありません。</p>';
+  let html = '<div class="stat-tiles">';
+  TECH_ORDER.forEach(tech => {
+    const t = totalRow.techniques[tech];
+    const share = totalRow.attempts ? t.attempts / totalRow.attempts : null;
+    html += `<div class="stat-tile"><div class="k">${TECH_LABELS[tech]}</div><div class="v">${pct(share)}`
+      + `<div style="font-size:11px;color:var(--text-muted);font-weight:400">${t.attempts}/${totalRow.attempts}</div></div></div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
 function selectRotationSet(rows, chipEl) {
   document.querySelectorAll('#rotationSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
   chipEl.classList.add('selected');
   document.getElementById('rotationTables').innerHTML = rotationTableHtml(rows);
   const totalRow = rows.find(r => r.rotation === '合計') || rows[rows.length - 1];
   document.getElementById('tossDistributionBody').innerHTML = tossDistributionHtml(totalRow);
+  const techBody = document.getElementById('attackTechniqueBody');
+  if (techBody) techBody.innerHTML = attackTechniqueHtml(totalRow);
 }
 
 function showRotationTables() {
@@ -2898,6 +3037,7 @@ function playerAcrossMatchesTableHtml(number, matches) {
   html += row('打数', p => p.attempts, false);
   html += row('得点', p => p.points, false);
   html += row('ミス', p => p.errors, false);
+  html += row('被ブロック', p => p.blocked, false);
   html += row('決定率', p => p.kill_rate, true);
   html += row('効果率', p => p.efficiency, true);
 
@@ -2944,10 +3084,15 @@ function combineStatsList(statsList) {
     serve_attempts: 0, serve_aces: 0, serve_errors: 0, serve_half_credit: 0,
     receive_attempts: 0, receive_a: 0, receive_b: 0, receive_c: 0, receive_d: 0, receive_errors: 0,
   };
+  TECH_ORDER.forEach(t => {
+    sum[`tech_${t}_attempts`] = 0;
+    sum[`tech_${t}_points`] = 0;
+    sum[`tech_${t}_errors`] = 0;
+  });
   valid.forEach(s => {
     Object.keys(sum).forEach(k => { sum[k] += (s[k] || 0); });
   });
-  return {
+  const result = {
     ...sum,
     kill_rate: dvRate(sum.points, sum.attempts),
     efficiency: dvRate(sum.points - sum.errors - sum.blocked, sum.attempts),
@@ -2957,6 +3102,10 @@ function combineStatsList(statsList) {
     receive_return_rate: dvRate(sum.receive_attempts - sum.receive_errors, sum.receive_attempts),
     receive_a_rate: dvRate(sum.receive_a, sum.receive_attempts),
   };
+  TECH_ORDER.forEach(t => {
+    result[`tech_${t}_kill_rate`] = dvRate(sum[`tech_${t}_points`], sum[`tech_${t}_attempts`]);
+  });
+  return result;
 }
 
 function combineSideOutBreak(list) {
@@ -2984,6 +3133,8 @@ function combineRotationRows(rowsList) {
     const sum = { attempts: 0, points: 0, errors: 0 };
     const catSum = {};
     CATEGORY_ORDER.forEach(cat => { catSum[cat] = { attempts: 0, points: 0, errors: 0 }; });
+    const techSum = {};
+    TECH_ORDER.forEach(t => { techSum[t] = { attempts: 0, points: 0, errors: 0 }; });
     valid.forEach(rowsForMatch => {
       const r = rowsForMatch[i];
       if (!r) return;
@@ -2991,6 +3142,10 @@ function combineRotationRows(rowsList) {
       CATEGORY_ORDER.forEach(cat => {
         const c = r.categories[cat];
         catSum[cat].attempts += c.attempts; catSum[cat].points += c.points; catSum[cat].errors += c.errors;
+      });
+      TECH_ORDER.forEach(t => {
+        const c = r.techniques[t];
+        techSum[t].attempts += c.attempts; techSum[t].points += c.points; techSum[t].errors += c.errors;
       });
     });
     const row = {
@@ -3003,6 +3158,13 @@ function combineRotationRows(rowsList) {
       row.categories[cat] = {
         attempts: catSum[cat].attempts, points: catSum[cat].points, errors: catSum[cat].errors,
         kill_rate: dvRate(catSum[cat].points, catSum[cat].attempts),
+      };
+    });
+    row.techniques = {};
+    TECH_ORDER.forEach(t => {
+      row.techniques[t] = {
+        attempts: techSum[t].attempts, points: techSum[t].points, errors: techSum[t].errors,
+        kill_rate: dvRate(techSum[t].points, techSum[t].attempts),
       };
     });
     rows.push(row);
@@ -3084,6 +3246,7 @@ function combinedTableHtml(stats) {
   html += row('打数', stats.attempts, false);
   html += row('得点', stats.points, false);
   html += row('ミス', stats.errors, false);
+  html += row('被ブロック', stats.blocked, false);
   html += row('決定率', stats.kill_rate, true);
   html += row('効果率', stats.efficiency, true);
 
