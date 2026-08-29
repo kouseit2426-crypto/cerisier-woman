@@ -385,6 +385,7 @@
         自チームがどうやって得点し、どうやって失点しているかの内訳です。「相手ミス」「自チームミス」は、
         自分たちの決定力・安定感がどれくらい得点に影響しているかの目安になります。
       </p>
+      <div class="player-grid" id="scoringPatternMatchButtons" style="margin-bottom:12px"></div>
       <div id="scoringPatternBody"></div>
     </div>
 
@@ -396,6 +397,7 @@
       <div class="player-grid" id="scoreProgressionSetButtons"></div>
       <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
       <h3 class="section-label" id="runHighlightsLabel">セットごとの流れハイライト</h3>
+      <div class="player-grid" id="runHighlightsMatchButtons" style="margin-bottom:12px"></div>
       <div id="runHighlightsBody"></div>
     </div>
 
@@ -1768,7 +1770,111 @@ function showScoreProgressionCharts() {
   } else {
     chartEl.innerHTML = '';
   }
+}
+
+// 試合を2つ以上選んでいるとき：選んだ全試合・全セットをボタンで並べて、どれでも選べるようにする
+// （以前は最初に選んだ試合しか出せなかったのを2026-08-29に修正）
+function selectScoreProgressionCombinedItem(item, chipEl) {
+  document.querySelectorAll('#scoreProgressionSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
+  document.getElementById('scoreProgressionChartArea').innerHTML =
+    scoreChartSvg(item.points, item.setLabel, item.teamLabel, item.opponent);
+}
+
+function showScoreProgressionChartsCombined(entries, dataList) {
+  const btnEl = document.getElementById('scoreProgressionSetButtons');
+  const chartEl = document.getElementById('scoreProgressionChartArea');
+  btnEl.innerHTML = '';
+  const items = [];
+  dataList.forEach(d => {
+    (d.scoreProgression.bySet || []).forEach(s => {
+      items.push({
+        label: `${d.opponent}（${formatMatchDate(d.matchDate)}）第${s.setNumber}セット`,
+        points: s.points,
+        setLabel: `${d.opponent} 第${s.setNumber}セット`,
+        teamLabel: d.teamLabel,
+        opponent: d.opponent,
+      });
+    });
+  });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectScoreProgressionCombinedItem(item, chip));
+    if (idx === 0) chip.classList.add('selected');
+    btnEl.appendChild(chip);
+  });
+  if (items.length) {
+    chartEl.innerHTML = scoreChartSvg(items[0].points, items[0].setLabel, items[0].teamLabel, items[0].opponent);
+  } else {
+    chartEl.innerHTML = '';
+  }
+}
+
+// ==================== 得点パターン：試合ごと／全体の切り替え ====================
+function selectScoringPatternView(bySet, chipEl) {
+  document.querySelectorAll('#scoringPatternMatchButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
+  document.getElementById('scoringPatternBody').innerHTML = scoringPatternHtml(computeScoringPattern(bySet));
+}
+
+function showScoringPattern() {
+  document.getElementById('scoringPatternMatchButtons').innerHTML = '';
+  document.getElementById('scoringPatternBody').innerHTML =
+    scoringPatternHtml(computeScoringPattern(DATA.scoreProgression.bySet));
+}
+
+function showScoringPatternCombined(entries, dataList) {
+  const btnEl = document.getElementById('scoringPatternMatchButtons');
+  btnEl.innerHTML = '';
+  const items = dataList.map(d => ({
+    label: `${d.opponent}（${formatMatchDate(d.matchDate)}）`,
+    bySet: d.scoreProgression.bySet,
+  }));
+  items.push({ label: '全体', bySet: dataList.flatMap(d => d.scoreProgression.bySet) });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectScoringPatternView(item.bySet, chip));
+    if (idx === items.length - 1) chip.classList.add('selected');
+    btnEl.appendChild(chip);
+  });
+  const last = items[items.length - 1];
+  document.getElementById('scoringPatternBody').innerHTML = scoringPatternHtml(computeScoringPattern(last.bySet));
+}
+
+// ==================== セットごとの流れハイライト：試合ごと／全体の切り替え ====================
+function selectRunHighlightsView(scoreProgression, chipEl) {
+  document.querySelectorAll('#runHighlightsMatchButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
+  document.getElementById('runHighlightsBody').innerHTML = runHighlightsHtml(scoreProgression);
+}
+
+function showRunHighlights() {
+  document.getElementById('runHighlightsMatchButtons').innerHTML = '';
   document.getElementById('runHighlightsBody').innerHTML = runHighlightsHtml(DATA.scoreProgression);
+}
+
+function showRunHighlightsCombined(entries, dataList) {
+  const btnEl = document.getElementById('runHighlightsMatchButtons');
+  btnEl.innerHTML = '';
+  const items = dataList.map(d => ({
+    label: `${d.opponent}（${formatMatchDate(d.matchDate)}）`,
+    sp: d.scoreProgression,
+  }));
+  items.push({ label: '全体', sp: { bySet: dataList.flatMap(d => d.scoreProgression.bySet) } });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectRunHighlightsView(item.sp, chip));
+    if (idx === items.length - 1) chip.classList.add('selected');
+    btnEl.appendChild(chip);
+  });
+  const last = items[items.length - 1];
+  document.getElementById('runHighlightsBody').innerHTML = runHighlightsHtml(last.sp);
 }
 
 // ==================== セットごとの流れハイライト（連続得点・点差） ====================
@@ -1887,15 +1993,30 @@ function showRotationTables() {
   document.getElementById('rotationTables').innerHTML = rotationTableHtml(last.rows);
 }
 
-// 試合を2つ以上選んでいるときは、セットごとの切り替えはせず、選んだ試合すべての合計を1つ表示する
+// 試合を2つ以上選んでいるとき：試合ごとのボタン＋「全体」（選んだ試合すべての合計）を並べて選べるようにする
+// （以前は選んだ試合すべての合計しか出せなかったのを2026-08-29に修正）
 function showRotationTablesCombined(entries, dataList) {
   document.getElementById('rotationCardLabel').textContent =
-    `ローテーション別 攻撃タイプ分布（チーム全体・選んだ${entries.length}試合の合計）`;
+    `ローテーション別 攻撃タイプ分布（チーム全体・選んだ${entries.length}試合）`;
   document.getElementById('rotationCardHint').textContent =
-    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。選んだ試合すべての合計を表示しています。';
-  document.getElementById('rotationSetButtons').innerHTML = '';
-  const combinedRows = combineRotationRows(dataList.map(d => d.rotation.total.rows));
-  document.getElementById('rotationTables').innerHTML = rotationTableHtml(combinedRows);
+    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。試合ごと、または選んだ試合すべての合計（全体）を選べます。';
+  const btnEl = document.getElementById('rotationSetButtons');
+  btnEl.innerHTML = '';
+  const items = dataList.map(d => ({
+    label: `${d.opponent}（${formatMatchDate(d.matchDate)}）`,
+    rows: d.rotation.total.rows,
+  }));
+  items.push({ label: '全体', rows: combineRotationRows(dataList.map(d => d.rotation.total.rows)) });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectRotationSet(item.rows, chip));
+    if (idx === items.length - 1) chip.classList.add('selected');
+    btnEl.appendChild(chip);
+  });
+  const last = items[items.length - 1];
+  document.getElementById('rotationTables').innerHTML = rotationTableHtml(last.rows);
 }
 
 function selectTeam(chipEl) {
@@ -1944,25 +2065,50 @@ function showSideOutBreakTable() {
   document.getElementById('rotationInsightLine').textContent = insight;
 }
 
-// 試合を2つ以上選んでいるときは、セットごとの切り替えはせず、選んだ試合すべての合計を1つ表示する
-function showSideOutBreakTableCombined(entries, dataList) {
-  document.getElementById('sideOutBreakLabel').textContent =
-    `サイドアウト率・ブレイク率（チーム全体・選んだ${entries.length}試合の合計）`;
-  document.getElementById('sideOutBreakHint').textContent =
-    'サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。選んだ試合すべての合計を表示しています。';
-  document.getElementById('sideOutBreakByRotationLabel').textContent = `ローテーション別（選んだ${entries.length}試合の合計）`;
-  document.getElementById('sideOutBreakSetButtons').innerHTML = '';
-  const combinedTotal = combineSideOutBreak(dataList.map(d => d.sideOutBreak.total));
+// 試合を2つ以上選んでいるとき：試合ごとのボタン＋「全体」（選んだ試合すべての合計）を並べて選べるようにする
+// （以前は選んだ試合すべての合計しか出せなかったのを2026-08-29に修正）
+function selectSideOutBreakView(item, chipEl) {
+  document.querySelectorAll('#sideOutBreakSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  chipEl.classList.add('selected');
   document.getElementById('sideOutBreakTiles').innerHTML =
-      `<div class="stat-tile"><div class="k">サーブ本数</div><div class="v">${combinedTotal.serve_total}</div></div>`
-    + `<div class="stat-tile"><div class="k">ブレイク率</div><div class="v">${pct(combinedTotal.break_rate)}</div></div>`
-    + `<div class="stat-tile"><div class="k">レシーブ本数</div><div class="v">${combinedTotal.receive_total}</div></div>`
-    + `<div class="stat-tile"><div class="k">サイドアウト率</div><div class="v">${pct(combinedTotal.side_out_rate)}</div></div>`;
-  const combinedByRotation = combineSideOutBreakByRotation(dataList.map(d => d.sideOutBreak.byRotation || []));
-  document.getElementById('sideOutBreakByRotationBody').innerHTML = sideOutBreakByRotationHtml(combinedByRotation);
-  const insight = rotationInsightText(combinedByRotation);
+      `<div class="stat-tile"><div class="k">サーブ本数</div><div class="v">${item.data.serve_total}</div></div>`
+    + `<div class="stat-tile"><div class="k">ブレイク率</div><div class="v">${pct(item.data.break_rate)}</div></div>`
+    + `<div class="stat-tile"><div class="k">レシーブ本数</div><div class="v">${item.data.receive_total}</div></div>`
+    + `<div class="stat-tile"><div class="k">サイドアウト率</div><div class="v">${pct(item.data.side_out_rate)}</div></div>`;
+  document.getElementById('sideOutBreakByRotationBody').innerHTML = sideOutBreakByRotationHtml(item.byRotation || []);
+  const insight = rotationInsightText(item.byRotation || []);
   document.getElementById('rotationInsightLine').style.display = insight ? '' : 'none';
   document.getElementById('rotationInsightLine').textContent = insight;
+}
+
+function showSideOutBreakTableCombined(entries, dataList) {
+  document.getElementById('sideOutBreakLabel').textContent =
+    `サイドアウト率・ブレイク率（チーム全体・選んだ${entries.length}試合）`;
+  document.getElementById('sideOutBreakHint').textContent =
+    'サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。試合ごと、または選んだ試合すべての合計（全体）を選べます。';
+  document.getElementById('sideOutBreakByRotationLabel').textContent = `ローテーション別（選んだ${entries.length}試合）`;
+  const btnEl = document.getElementById('sideOutBreakSetButtons');
+  btnEl.innerHTML = '';
+  const items = dataList.map(d => ({
+    label: `${d.opponent}（${formatMatchDate(d.matchDate)}）`,
+    data: d.sideOutBreak.total,
+    byRotation: d.sideOutBreak.byRotation || [],
+  }));
+  items.push({
+    label: '全体',
+    data: combineSideOutBreak(dataList.map(d => d.sideOutBreak.total)),
+    byRotation: combineSideOutBreakByRotation(dataList.map(d => d.sideOutBreak.byRotation || [])),
+  });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectSideOutBreakView(item, chip));
+    if (idx === items.length - 1) chip.classList.add('selected');
+    btnEl.appendChild(chip);
+  });
+  const last = items[items.length - 1];
+  selectSideOutBreakView(last, btnEl.children[items.length - 1]);
 }
 
 // ==================== プレー映像（統計を押すとその場面の動画がすぐ再生される機能） ====================
@@ -2366,13 +2512,16 @@ function showSingleMatch(data, entries, dataList) {
   if (combined) {
     showRotationTablesCombined(entries, dataList);
     showSideOutBreakTableCombined(entries, dataList);
+    showScoringPatternCombined(entries, dataList);
+    showScoreProgressionChartsCombined(entries, dataList);
+    showRunHighlightsCombined(entries, dataList);
   } else {
     showRotationTables();
     showSideOutBreakTable();
+    showScoringPattern();
+    showScoreProgressionCharts();
+    showRunHighlights();
   }
-  const bySetForPattern = combined ? dataList.flatMap(d => d.scoreProgression.bySet) : DATA.scoreProgression.bySet;
-  document.getElementById('scoringPatternBody').innerHTML = scoringPatternHtml(computeScoringPattern(bySetForPattern));
-  showScoreProgressionCharts();
   showPage(1);
   renderSingleMatchPlayerView();
   if (combined) {
@@ -2397,10 +2546,11 @@ function playerLeaderboardHtml(players) {
       .sort((a, b) => b[key] - a[key])
       .slice(0, 5);
   }
-  function rowsHtml(list, key) {
+  function rowsHtml(list, key, numGetter, denKey) {
     if (!list.length) return '<p class="hint">規定本数（' + MIN_ATTEMPTS + '本）以上の選手がいません。</p>';
     return '<table class="rotation-table"><thead><tr><th>順位</th><th>選手</th><th>値</th></tr></thead><tbody>'
-      + list.map((p, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${pct(p[key])}</td></tr>`).join('')
+      + list.map((p, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${pct(p[key])}`
+        + `<div style="font-size:11px;color:var(--text-muted)">${numGetter(p)}/${p[denKey]}</div></td></tr>`).join('')
       + '</tbody></table>';
   }
   const byKill = topList(players, 'kill_rate', 'attempts');
@@ -2408,9 +2558,9 @@ function playerLeaderboardHtml(players) {
   const byReceive = topList(players, 'receive_a_rate', 'receive_attempts');
 
   return '<div class="rank-grid">'
-    + `<div><h4>アタック決定率</h4>${rowsHtml(byKill, 'kill_rate')}</div>`
-    + `<div><h4>サーブ効果率</h4>${rowsHtml(byServe, 'serve_efficiency')}</div>`
-    + `<div><h4>レシーブA率</h4>${rowsHtml(byReceive, 'receive_a_rate')}</div>`
+    + `<div><h4>アタック決定率</h4>${rowsHtml(byKill, 'kill_rate', p => p.points, 'attempts')}</div>`
+    + `<div><h4>サーブ効果率</h4>${rowsHtml(byServe, 'serve_efficiency', p => p.serve_aces + p.serve_half_credit, 'serve_attempts')}</div>`
+    + `<div><h4>レシーブA率</h4>${rowsHtml(byReceive, 'receive_a_rate', p => p.receive_a, 'receive_attempts')}</div>`
     + '</div>';
 }
 
@@ -2961,7 +3111,7 @@ function combinedSideOutBreakHtml(s) {
   return html;
 }
 
-let matchComparisonOpenSections = new Set(['team-trend', 'opponent-analysis']);
+let matchComparisonOpenSections = new Set(['team-trend']);
 
 function toggleAccordionSection(id) {
   if (matchComparisonOpenSections.has(id)) {
@@ -3059,11 +3209,14 @@ function showMatchComparison(matches) {
 
   let html = accordionSectionHtml('team-trend', 'チームの推移（サイドアウト率・ブレイク率・決定率・効果率）', teamTrendChartSvg(matches));
 
-  const opponentNames = new Set(matches.map(m => m.opponent));
-  if (opponentNames.size === 1) {
-    const oppName = matches[0].opponent;
-    html += accordionSectionHtml('opponent-analysis', `対 ${oppName} 戦の傾向（スカウティング）`, opponentAnalysisHtml(matches));
-  }
+  // 相手チーム分析（スカウティング）セクションは2026-08-29にいったん非表示に。
+  // opponentAnalysisHtml関数自体はそのまま残っているので、また使いたくなったら
+  // 下の3行のコメントを外せば復活できる。
+  // const opponentNames = new Set(matches.map(m => m.opponent));
+  // if (opponentNames.size === 1) {
+  //   const oppName = matches[0].opponent;
+  //   html += accordionSectionHtml('opponent-analysis', `対 ${oppName} 戦の傾向（スカウティング）`, opponentAnalysisHtml(matches));
+  // }
 
   html += accordionSectionHtml('team-compare', '試合ごとの比較（チーム全体）', matchComparisonTableHtml(matches));
 
@@ -3096,7 +3249,8 @@ setupDropZoneToggle();
 setupPlayerListToggle();
 setupSidebarToggle();
 setupMatchListToggle();
-setupOpponentQuickSelect();
+// 対戦相手クイック選択（スカウティング用）は2026-08-29にいったん非表示に。
+// setupOpponentQuickSelect();
 
 fetch('matches.json')
   .then(res => res.ok ? res.json() : [])
@@ -3109,7 +3263,7 @@ fetch('matches.json')
     }
     selectedMatchKeys.add(matchKey(matches[0]));
     renderMatchChecklist();
-    renderOpponentQuickSelect();
+    // renderOpponentQuickSelect();
     renderMatchSelection();
   });
 </script>
