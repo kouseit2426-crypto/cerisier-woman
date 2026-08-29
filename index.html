@@ -198,6 +198,27 @@
   .detail-header span { color: var(--text-muted); font-size: 13px; }
 
   .section-label { font-size: 17px; color: var(--text-primary); margin: 22px 0 10px; font-weight: 600; }
+
+  .collapsible { margin: 22px 0 10px; }
+  .collapsible-header {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+    background: none; border: none; padding: 0; margin: 0; cursor: pointer; text-align: left;
+    font: inherit; color: inherit;
+  }
+  .collapsible-header .section-label { margin: 0; }
+  .collapsible-header .collapse-arrow {
+    color: var(--text-muted); font-size: 13px; margin-left: 10px; flex-shrink: 0;
+    transition: transform 0.15s ease;
+  }
+  .collapsible.closed .collapse-arrow { transform: rotate(-90deg); }
+  .collapsible-body { margin-top: 10px; }
+  .collapsible.closed .collapsible-body { display: none; }
+  .expand-all-btn {
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
+    border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  }
+  .expand-all-btn:hover { background: var(--grid); }
+  .page-toolbar { display: flex; justify-content: flex-end; margin: 0 0 12px; }
   .stat-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
   @media (max-width: 640px) { .stat-tiles { grid-template-columns: repeat(2, 1fr); } }
   .stat-tile { background: var(--page-plane); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
@@ -280,6 +301,7 @@
   <div class="card" id="matchComparisonCard" style="display:none">
     <div class="detail-header">
       <h2 id="matchComparisonTitle"></h2>
+      <button type="button" class="expand-all-btn" style="margin-left:auto" onclick="toggleAllAccordionSections(this)">すべて展開</button>
     </div>
     <p class="hint" style="margin-top:-6px">試合を2つ以上選ぶと、ここに並べて比較表示されます。もう一度チェックを外すと選択解除できます。</p>
     <div id="matchComparisonBody"></div>
@@ -297,152 +319,260 @@
       <div class="detail-header">
         <h2 id="detailName"></h2>
         <span id="detailNumber"></span>
+        <button type="button" class="expand-all-btn" style="margin-left:auto" onclick="toggleAllCollapsibles(document.getElementById('page1'), this)">すべて展開</button>
       </div>
 
-      <h3 class="section-label">アタック（全セット合計）</h3>
-      <div class="stat-tiles" id="detailTiles"></div>
-      <table>
-        <thead>
-          <tr><th id="detailSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>被ブロック</th><th>決定率</th><th>効果率</th></tr>
-        </thead>
-        <tbody id="detailSetBody"></tbody>
-      </table>
-
-      <div id="detailHardSection" style="display:none">
-        <h3 class="section-label">強打（全セット合計）</h3>
-        <p class="hint" style="margin-top:-6px">しっかり打ち込んだ攻撃（アタックのうち強打だった分）の内訳です。</p>
-        <div class="stat-tiles" id="detailHardTiles"></div>
-        <table>
-          <thead>
-            <tr><th id="detailHardSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th></tr>
-          </thead>
-          <tbody id="detailHardBody"></tbody>
-        </table>
+      <div class="collapsible" id="detailSpikeSection" style="margin-top:0">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label">スパイク（全セット合計）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <div class="stat-tiles" id="detailTiles"></div>
+          <table>
+            <thead>
+              <tr><th id="detailSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>被ブロック</th><th>決定率</th><th>効果率</th></tr>
+            </thead>
+            <tbody id="detailSetBody"></tbody>
+          </table>
+        </div>
       </div>
 
-      <div id="detailFeintSection" style="display:none">
-        <h3 class="section-label">フェイント（全セット合計）</h3>
-        <p class="hint" style="margin-top:-6px">相手コートへ軽く落とす攻撃（アタックのうちフェイントだった分）の内訳です。</p>
-        <div class="stat-tiles" id="detailFeintTiles"></div>
-        <table>
-          <thead>
-            <tr><th id="detailFeintSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th></tr>
-          </thead>
-          <tbody id="detailFeintBody"></tbody>
-        </table>
+      <div class="collapsible closed" id="detailHardSection" style="display:none">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label">強打（全セット合計）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <p class="hint" style="margin-top:-6px">しっかり打ち込んだ攻撃（スパイクのうち強打だった分）の内訳です。</p>
+          <div class="stat-tiles" id="detailHardTiles"></div>
+          <table>
+            <thead>
+              <tr><th id="detailHardSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th></tr>
+            </thead>
+            <tbody id="detailHardBody"></tbody>
+          </table>
+        </div>
       </div>
 
-      <div id="detailRotationSection" style="display:none">
-        <h3 class="section-label">ローテーション別（アタック・全セット合計）</h3>
-        <p class="hint" style="margin-top:-6px">どのローテーションで多く打っているか・決まっているかの目安です。</p>
-        <div id="detailRotationBody"></div>
+      <div class="collapsible closed" id="detailFeintSection" style="display:none">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label">フェイント（全セット合計）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <p class="hint" style="margin-top:-6px">相手コートへ軽く落とす攻撃（スパイクのうちフェイントだった分）の内訳です。</p>
+          <div class="stat-tiles" id="detailFeintTiles"></div>
+          <table>
+            <thead>
+              <tr><th id="detailFeintSetHeaderLabel">セット</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th></tr>
+            </thead>
+            <tbody id="detailFeintBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="collapsible closed" id="detailRotationSection" style="display:none">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label">ローテーション別（スパイク・全セット合計）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <p class="hint" style="margin-top:-6px">どのローテーションで多く打っているか・決まっているかの目安です。</p>
+          <div id="detailRotationBody"></div>
+        </div>
       </div>
     </div>
 
     <div class="card" id="detailCard2">
-      <h3 class="section-label" id="blockSectionLabel" style="margin-top:0">ブロック（全セット合計）</h3>
-      <div class="stat-tiles" id="blockTiles"></div>
-
-      <h3 class="section-label" id="serveSectionLabel">サーブ（全セット合計）</h3>
-      <div class="stat-tiles" id="serveTiles"></div>
-
-      <h3 class="section-label" id="receiveSectionLabel">レシーブ（全セット合計）</h3>
-      <div class="stat-tiles" id="receiveTiles"></div>
-
-      <div id="videoClipsSection" style="display:none">
-        <h3 class="section-label">プレー映像</h3>
-        <p class="hint" style="margin-top:-6px">
-          プレーを押すと、その場面からすぐに動画が再生されます（動画側の時刻合わせが多少ずれることがあります）。
-        </p>
-        <div class="video-player-wrap" id="videoPlayerWrap" style="display:none">
-          <iframe id="videoPlayerFrame" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+      <div class="collapsible closed" id="blockSection" style="margin-top:0">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label" id="blockSectionLabel" style="margin-top:0">ブロック（全セット合計）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <div class="stat-tiles" id="blockTiles"></div>
         </div>
-        <div id="videoClipsBody"></div>
+      </div>
+
+      <div class="collapsible closed" id="serveSection">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label" id="serveSectionLabel">サーブ（全セット合計）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <div class="stat-tiles" id="serveTiles"></div>
+        </div>
+      </div>
+
+      <div class="collapsible closed" id="receiveSection">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label" id="receiveSectionLabel">レシーブ（全セット合計）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <div class="stat-tiles" id="receiveTiles"></div>
+        </div>
+      </div>
+
+      <div class="collapsible closed" id="videoClipsSection" style="display:none">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label">プレー映像</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <p class="hint" style="margin-top:-6px">
+            プレーを押すと、その場面からすぐに動画が再生されます（動画側の時刻合わせが多少ずれることがあります）。
+          </p>
+          <div class="video-player-wrap" id="videoPlayerWrap" style="display:none">
+            <iframe id="videoPlayerFrame" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+          </div>
+          <div id="videoClipsBody"></div>
+        </div>
       </div>
 
       <p class="hint" id="errorBreakdownLine" style="display:none;margin-top:16px;margin-bottom:0"></p>
     </div>
 
-    <div class="card" id="comparisonCard">
-      <div class="detail-header">
-        <h2 id="comparisonTitle"></h2>
+    <div class="card collapsible closed" id="comparisonCard">
+      <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+        <div class="detail-header" style="margin-bottom:0">
+          <h2 id="comparisonTitle"></h2>
+        </div>
+        <span class="collapse-arrow">▾</span>
+      </button>
+      <div class="collapsible-body">
+        <p class="hint" style="margin-top:-6px">選手を2人以上選ぶと、ここに並べて比較表示されます。もう一度チップを押すと選択解除できます。</p>
+        <div id="comparisonBody"></div>
       </div>
-      <p class="hint" style="margin-top:-6px">選手を2人以上選ぶと、ここに並べて比較表示されます。もう一度チップを押すと選択解除できます。</p>
-      <div id="comparisonBody"></div>
     </div>
 
-    <div class="card" id="startingLineupsCard">
-      <h3 class="section-label" style="margin-top:0">スタメン（セット開始時点）</h3>
-      <p class="hint" style="margin-top:-6px">P1が基本的にサーブ位置（次に回転して前衛に上がる並び）です。セットを選んでください。</p>
-      <div class="player-grid" id="startingLineupSetButtons"></div>
-      <div id="startingLineupBody" style="margin-top:16px"></div>
+    <div class="card collapsible closed" id="startingLineupsCard">
+      <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3 class="section-label" style="margin-top:0">スタメン（セット開始時点）</h3>
+        <span class="collapse-arrow">▾</span>
+      </button>
+      <div class="collapsible-body">
+        <p class="hint" style="margin-top:-6px">P1が基本的にサーブ位置（次に回転して前衛に上がる並び）です。セットを選んでください。</p>
+        <div class="player-grid" id="startingLineupSetButtons"></div>
+        <div id="startingLineupBody" style="margin-top:16px"></div>
+      </div>
     </div>
 
-    <div class="card" id="leaderboardCard">
-      <h3 class="section-label" id="leaderboardLabel" style="margin-top:0">選手ランキング（この試合）</h3>
-      <p class="hint" style="margin-top:-6px">
-        規定本数（3本）以上の選手が対象です。
-      </p>
-      <div id="leaderboardBody"></div>
+    <div class="card collapsible closed" id="leaderboardCard">
+      <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3 class="section-label" id="leaderboardLabel" style="margin-top:0">選手ランキング（この試合）</h3>
+        <span class="collapse-arrow">▾</span>
+      </button>
+      <div class="collapsible-body">
+        <p class="hint" style="margin-top:-6px">
+          規定本数（3本）以上の選手が対象です。
+        </p>
+        <div id="leaderboardBody"></div>
+      </div>
     </div>
   </div>
 
   <div class="page" id="page2">
-    <div class="card">
-      <h3 class="section-label" id="sideOutBreakLabel" style="margin-top:0">サイドアウト率・ブレイク率（チーム全体）</h3>
-      <p class="hint" style="margin-top:-6px" id="sideOutBreakHint">
-        サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。セットを選んでください。
-      </p>
-      <div class="player-grid" id="sideOutBreakSetButtons"></div>
-      <div class="stat-tiles" id="sideOutBreakTiles" style="margin-top:16px"></div>
-      <h3 class="section-label" id="sideOutBreakByRotationLabel">ローテーション別（全セット合計）</h3>
-      <p class="hint" style="margin-top:-6px">
-        どのローテーションで失点しやすいか・得点しやすいかの目安です。
-      </p>
-      <div id="sideOutBreakByRotationBody"></div>
-      <p class="hint" id="rotationInsightLine" style="margin-top:12px"></p>
+    <div class="page-toolbar">
+      <button type="button" class="expand-all-btn" onclick="toggleAllCollapsibles(document.getElementById('page2'), this)">すべて展開</button>
     </div>
 
-    <div class="card" id="scoringPatternCard">
-      <h3 class="section-label" style="margin-top:0">得点パターン（チーム全体）</h3>
-      <p class="hint" style="margin-top:-6px">
-        自チームがどうやって得点し、どうやって失点しているかの内訳です。「相手ミス」「自チームミス」は、
-        自分たちの決定力・安定感がどれくらい得点に影響しているかの目安になります。
-      </p>
-      <div class="player-grid" id="scoringPatternMatchButtons" style="margin-bottom:12px"></div>
-      <div id="scoringPatternBody"></div>
+    <div class="card">
+      <div class="collapsible" id="sideOutBreakSection" style="margin-top:0">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label" id="sideOutBreakLabel" style="margin-top:0">サイドアウト率・ブレイク率（チーム全体）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <p class="hint" style="margin-top:-6px" id="sideOutBreakHint">
+            サイドアウト率＝相手のサーブを受けたラリーで勝った割合／ブレイク率＝自分たちのサーブのラリーで勝った割合です。セットを選んでください。
+          </p>
+          <div class="player-grid" id="sideOutBreakSetButtons"></div>
+          <div class="stat-tiles" id="sideOutBreakTiles" style="margin-top:16px"></div>
+        </div>
+      </div>
+
+      <div class="collapsible closed" id="sideOutBreakByRotationSection">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label" id="sideOutBreakByRotationLabel">ローテーション別（全セット合計）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <p class="hint" style="margin-top:-6px">
+            どのローテーションで失点しやすいか・得点しやすいかの目安です。
+          </p>
+          <div id="sideOutBreakByRotationBody"></div>
+          <p class="hint" id="rotationInsightLine" style="margin-top:12px"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card collapsible closed" id="scoringPatternCard">
+      <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3 class="section-label" style="margin-top:0">得点パターン（チーム全体）</h3>
+        <span class="collapse-arrow">▾</span>
+      </button>
+      <div class="collapsible-body">
+        <p class="hint" style="margin-top:-6px">
+          自チームがどうやって得点し、どうやって失点しているかの内訳です。「相手ミス」「自チームミス」は、
+          自分たちの決定力・安定感がどれくらい得点に影響しているかの目安になります。
+        </p>
+        <div class="player-grid" id="scoringPatternMatchButtons" style="margin-bottom:12px"></div>
+        <div id="scoringPatternBody"></div>
+      </div>
     </div>
 
     <div class="card" id="scoreProgressionCard">
-      <h3 class="section-label" style="margin-top:0">セット経過（得点推移）</h3>
-      <p class="hint" style="margin-top:-6px">
-        ラリーが決まるたびに、その時点のスコアをグラフにしています。セットを選んでください。
-      </p>
-      <div class="player-grid" id="scoreProgressionSetButtons"></div>
-      <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
-      <h3 class="section-label" id="runHighlightsLabel">セットごとの流れハイライト</h3>
-      <div class="player-grid" id="runHighlightsMatchButtons" style="margin-bottom:12px"></div>
-      <div id="runHighlightsBody"></div>
+      <div class="collapsible closed" id="scoreProgressionSection" style="margin-top:0">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label" style="margin-top:0">セット経過（得点推移）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <p class="hint" style="margin-top:-6px">
+            ラリーが決まるたびに、その時点のスコアをグラフにしています。セットを選んでください。
+          </p>
+          <div class="player-grid" id="scoreProgressionSetButtons"></div>
+          <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
+        </div>
+      </div>
+
+      <div class="collapsible closed" id="runHighlightsSection">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label" id="runHighlightsLabel">セットごとの流れハイライト</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <div class="player-grid" id="runHighlightsMatchButtons" style="margin-bottom:12px"></div>
+          <div id="runHighlightsBody"></div>
+        </div>
+      </div>
     </div>
 
-    <div class="card" id="rotationCard">
-      <h3 class="section-label" id="rotationCardLabel" style="margin-top:0">ローテーション別 攻撃タイプ分布（チーム全体）</h3>
-      <p class="hint" style="margin-top:-6px" id="rotationCardHint">
-        セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。
-        攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。セットを選んでください。
-      </p>
-      <div class="player-grid" id="rotationSetButtons"></div>
-      <h4 style="margin:16px 0 8px;font-size:14px" id="tossDistributionLabel">トス配分（％）</h4>
-      <p class="hint" style="margin-top:-4px">
-        「その他」はレフト・ライト・ミドル・パイプのどれにも当てはまらない攻撃で、ほとんどがセッターダンプ（ツー）です。
-      </p>
-      <div id="tossDistributionBody"></div>
-      <h4 style="margin:16px 0 8px;font-size:14px" id="attackTechniqueLabel">打法（％）</h4>
-      <p class="hint" style="margin-top:-4px">
-        強打＝しっかり打ち込んだ攻撃、フェイント＝相手コートへ軽く落とす攻撃です。
-      </p>
-      <div id="attackTechniqueBody"></div>
-      <div id="rotationTables" style="margin-top:16px"></div>
+    <div class="card collapsible closed" id="rotationCard">
+      <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3 class="section-label" id="rotationCardLabel" style="margin-top:0">ローテーション別 攻撃タイプ分布（チーム全体）</h3>
+        <span class="collapse-arrow">▾</span>
+      </button>
+      <div class="collapsible-body">
+        <p class="hint" style="margin-top:-6px" id="rotationCardHint">
+          セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。
+          攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。セットを選んでください。
+        </p>
+        <div class="player-grid" id="rotationSetButtons"></div>
+        <h4 style="margin:16px 0 8px;font-size:14px" id="tossDistributionLabel">トス配分（％）</h4>
+        <p class="hint" style="margin-top:-4px">
+          「その他」はレフト・ライト・ミドル・パイプのどれにも当てはまらない攻撃で、ほとんどがセッターダンプ（ツー）です。
+        </p>
+        <div id="tossDistributionBody"></div>
+        <h4 style="margin:16px 0 8px;font-size:14px" id="attackTechniqueLabel">打法（％）</h4>
+        <p class="hint" style="margin-top:-4px">
+          強打＝しっかり打ち込んだ攻撃、フェイント＝相手コートへ軽く落とす攻撃です。
+        </p>
+        <div id="attackTechniqueBody"></div>
+        <div id="rotationTables" style="margin-top:16px"></div>
+      </div>
     </div>
   </div>
   </div>
@@ -652,12 +782,12 @@ function dvAnalyzeSet(linesInSet, ownMarker, backAttackCombos) {
       else if (evaluation === '!') p.block_touch_opp += 1;
       else if (evaluation === '+') p.block_touch_own += 1;
     } else if (skill === 'S') {
-      // '+'・'!'・'-' は、エースではないが相手のレシーブを崩せている効果的なサーブなので、
-      // 効果率に半分の重みで加える（こうせいさんの指定、2026-08-29）
+      // '+'・'-' は、エースではないが相手のレシーブを崩せている効果的なサーブなので、
+      // 効果率に半分の重みで加える（こうせいさんの指定、2026-08-29。'!'は対象外に変更、2026-08-29）
       p.serve_attempts += 1;
       if (evaluation === '#') p.serve_aces += 1;
       else if (evaluation === '=') p.serve_errors += 1;
-      else if (evaluation === '+' || evaluation === '!' || evaluation === '-') p.serve_half_credit += 1;
+      else if (evaluation === '+' || evaluation === '-') p.serve_half_credit += 1;
     } else if (skill === 'R') {
       p.receive_attempts += 1;
       if (evaluation === '#') p.receive_a += 1;
@@ -1505,11 +1635,10 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
     rotationSection.style.display = 'none';
   }
 
-  const blockLabel = document.getElementById('blockSectionLabel');
+  const blockSectionWrap = document.getElementById('blockSection');
   const blockTiles = document.getElementById('blockTiles');
   if (totalStats.block_attempts > 0) {
-    blockLabel.style.display = '';
-    blockTiles.style.display = '';
+    blockSectionWrap.style.display = '';
     const touch = totalStats.block_touch_own + totalStats.block_touch_opp;
     blockTiles.innerHTML = `
       <div class="stat-tile"><div class="k">本数</div><div class="v">${totalStats.block_attempts}</div></div>
@@ -1519,34 +1648,30 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
       <div class="stat-tile"><div class="k">失点</div><div class="v">${totalStats.block_errors}</div></div>
     `;
   } else {
-    blockLabel.style.display = 'none';
-    blockTiles.style.display = 'none';
+    blockSectionWrap.style.display = 'none';
   }
 
-  const serveLabel = document.getElementById('serveSectionLabel');
+  const serveSectionWrap = document.getElementById('serveSection');
   const serveTiles = document.getElementById('serveTiles');
   if (totalStats.serve_attempts > 0) {
-    serveLabel.style.display = '';
-    serveTiles.style.display = '';
+    serveSectionWrap.style.display = '';
     serveTiles.innerHTML = `
       <div class="stat-tile"><div class="k">打数</div><div class="v">${totalStats.serve_attempts}</div></div>
       <div class="stat-tile"><div class="k">エース</div><div class="v">${totalStats.serve_aces}</div></div>
       <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.serve_errors}</div></div>
-      <div class="stat-tile"><div class="k">効果本数</div><div class="v">${totalStats.serve_half_credit}<div style="font-size:11px;color:var(--text-muted);font-weight:400">＋／！／－の合計</div></div></div>
+      <div class="stat-tile"><div class="k">効果本数</div><div class="v">${totalStats.serve_half_credit}<div style="font-size:11px;color:var(--text-muted);font-weight:400">＋／－の合計</div></div></div>
       <div class="stat-tile"><div class="k">エース率</div><div class="v">${pct(totalStats.serve_ace_rate)}</div></div>
       <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pct(totalStats.serve_error_rate)}</div></div>
       <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.serve_efficiency)}</div></div>
     `;
   } else {
-    serveLabel.style.display = 'none';
-    serveTiles.style.display = 'none';
+    serveSectionWrap.style.display = 'none';
   }
 
-  const receiveLabel = document.getElementById('receiveSectionLabel');
+  const receiveSectionWrap = document.getElementById('receiveSection');
   const receiveTiles = document.getElementById('receiveTiles');
   if (totalStats.receive_attempts > 0) {
-    receiveLabel.style.display = '';
-    receiveTiles.style.display = '';
+    receiveSectionWrap.style.display = '';
     receiveTiles.innerHTML = `
       <div class="stat-tile"><div class="k">本数</div><div class="v">${totalStats.receive_attempts}</div></div>
       <div class="stat-tile"><div class="k">Aパス</div><div class="v">${totalStats.receive_a}</div></div>
@@ -1558,8 +1683,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
       <div class="stat-tile"><div class="k">A率</div><div class="v">${pct(totalStats.receive_a_rate)}</div></div>
     `;
   } else {
-    receiveLabel.style.display = 'none';
-    receiveTiles.style.display = 'none';
+    receiveSectionWrap.style.display = 'none';
   }
 
   // プレー映像（動画URLが設定されている試合だけ表示される）。選手を切り替えたら、
@@ -1581,7 +1705,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
   // ミスの内訳（控えめに一行だけ。派手な表やグラフにはしない）
   const errBreakdownEl = document.getElementById('errorBreakdownLine');
   const errParts = [
-    ['アタック', totalStats.errors],
+    ['スパイク', totalStats.errors],
     ['サーブ', totalStats.serve_errors],
     ['レシーブ', totalStats.receive_errors],
     ['ブロック', totalStats.block_errors],
@@ -1736,7 +1860,7 @@ function comparisonTableHtml(players) {
   });
   html += '</tr></thead><tbody>';
 
-  html += comparisonSectionHtml('アタック（全セット合計）', colspan);
+  html += comparisonSectionHtml('スパイク（全セット合計）', colspan);
   html += comparisonRowHtml('打数', players, p => p.attempts, false);
   html += comparisonRowHtml('得点', players, p => p.points, false);
   html += comparisonRowHtml('ミス', players, p => p.errors, false);
@@ -2369,8 +2493,8 @@ function videoLinkForSeconds(url, seconds) {
 }
 
 const VIDEO_CLIP_CATEGORIES = [
-  { key: 'attack_kill', label: 'アタック決定', skill: 'A', evaluation: '#' },
-  { key: 'attack_error', label: 'アタックミス', skill: 'A', evaluation: '=' },
+  { key: 'attack_kill', label: 'スパイク決定', skill: 'A', evaluation: '#' },
+  { key: 'attack_error', label: 'スパイクミス', skill: 'A', evaluation: '=' },
   { key: 'serve_ace', label: 'サーブエース', skill: 'S', evaluation: '#' },
   { key: 'serve_error', label: 'サーブミス', skill: 'S', evaluation: '=' },
   { key: 'receive_a', label: 'レシーブ（Aパス）', skill: 'R', evaluation: '#' },
@@ -2469,7 +2593,7 @@ function scoringPatternHtml(pattern) {
     `<div class="stat-tile"><div class="k">${label}</div><div class="v">${val}<br><span style="font-size:12px;font-weight:400">${pct(dvRate(val, total))}</span></div></div>`;
   let html = `<h3 class="section-label" style="margin-top:0">得点（合計${ownTotal}点）</h3>`;
   html += '<div class="stat-tiles">'
-    + tile('アタック決定', c.ownKill, ownTotal)
+    + tile('スパイク決定', c.ownKill, ownTotal)
     + tile('サーブエース', c.ownAce, ownTotal)
     + tile('ブロック得点', c.ownBlock, ownTotal)
     + tile('相手ミス', c.opponentError, ownTotal)
@@ -2530,6 +2654,20 @@ function showPage(n) {
   document.getElementById('page2').classList.toggle('active', n === 2);
   document.getElementById('tabBtn1').classList.toggle('active', n === 1);
   document.getElementById('tabBtn2').classList.toggle('active', n === 2);
+}
+
+// ==================== 折りたたみ（アコーディオン）まわりの共通処理 ====================
+function toggleCollapsible(headerEl) {
+  const wrap = headerEl.closest('.collapsible');
+  if (wrap) wrap.classList.toggle('closed');
+}
+
+function toggleAllCollapsibles(containerEl, btnEl) {
+  // ボタンの現在の表示文字で開閉方向を決める（一部だけ開いている状態でも、
+  // 「すべて展開」ボタンを押したら必ず全部開く、という直感通りの動きにするため）
+  const willExpand = !btnEl || btnEl.textContent.trim() !== 'すべて折りたたむ';
+  containerEl.querySelectorAll('.collapsible').forEach(el => el.classList.toggle('closed', !willExpand));
+  if (btnEl) btnEl.textContent = willExpand ? 'すべて折りたたむ' : 'すべて展開';
 }
 
 let selectedMatchKeys = new Set();
@@ -2764,7 +2902,7 @@ function playerLeaderboardHtml(players) {
   const byReceive = topList(players, 'receive_a_rate', 'receive_attempts');
 
   return '<div class="rank-grid">'
-    + `<div><h4>アタック決定率</h4>${rowsHtml(byKill, 'kill_rate', p => p.points, 'attempts')}</div>`
+    + `<div><h4>スパイク決定率</h4>${rowsHtml(byKill, 'kill_rate', p => p.points, 'attempts')}</div>`
     + `<div><h4>サーブ効果率</h4>${rowsHtml(byServe, 'serve_efficiency', p => p.serve_aces + p.serve_half_credit, 'serve_attempts')}</div>`
     + `<div><h4>レシーブA率</h4>${rowsHtml(byReceive, 'receive_a_rate', p => p.receive_a, 'receive_attempts')}</div>`
     + '</div>';
@@ -2812,7 +2950,7 @@ function matchComparisonTableHtml(matches) {
   });
   html += '</tr>';
 
-  html += matchComparisonSectionHtml('アタック（全セット合計）', colspan);
+  html += matchComparisonSectionHtml('スパイク（全セット合計）', colspan);
   html += matchComparisonRowHtml('打数', matches, m => m.team.total.attempts, false);
   html += matchComparisonRowHtml('得点', matches, m => m.team.total.points, false);
   html += matchComparisonRowHtml('ミス', matches, m => m.team.total.errors, false);
@@ -3082,7 +3220,7 @@ function playerAcrossMatchesTableHtml(number, matches) {
   });
   html += '</tr></thead><tbody>';
 
-  html += matchComparisonSectionHtml('アタック（全セット合計）', colspan);
+  html += matchComparisonSectionHtml('スパイク（全セット合計）', colspan);
   html += row('打数', p => p.attempts, false);
   html += row('得点', p => p.points, false);
   html += row('ミス', p => p.errors, false);
@@ -3225,7 +3363,7 @@ function combineRotationRows(rowsList) {
 // 選手個人の「ローテーション別のアタック出場状況」の表
 function playerRotationTableHtml(rows) {
   const withAttempts = (rows || []).filter(r => r.attempts > 0);
-  if (!withAttempts.length) return '<p class="hint">この選手のアタック出場記録がありません。</p>';
+  if (!withAttempts.length) return '<p class="hint">この選手のスパイク出場記録がありません。</p>';
   let html = '<div style="overflow-x:auto"><table class="rotation-table"><thead><tr>'
     + '<th>ローテ</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th>'
     + '</tr></thead><tbody>';
@@ -3292,7 +3430,7 @@ function combinedTableHtml(stats) {
     return `<tr><td>${escapeHtml(label)}</td><td>${isPct ? pct(value) : value}</td></tr>`;
   }
 
-  html += matchComparisonSectionHtml('アタック（全セット合計）', colspan);
+  html += matchComparisonSectionHtml('スパイク（全セット合計）', colspan);
   html += row('打数', stats.attempts, false);
   html += row('得点', stats.points, false);
   html += row('ミス', stats.errors, false);
@@ -3380,7 +3518,7 @@ function opponentScorerLeaderboardHtml(list) {
   if (!list.length) return '<p class="hint">相手選手ごとの決定データがありません。</p>';
   let html = '<p class="hint" style="margin-top:0">背番号のみ（相手チームの名簿は登録していないため）。多い順。</p>'
     + '<div style="overflow-x:auto"><table class="rotation-table"><thead><tr>'
-    + '<th>相手の背番号</th><th>アタック決定</th><th>サーブエース</th><th>ブロック得点</th><th>合計</th>'
+    + '<th>相手の背番号</th><th>スパイク決定</th><th>サーブエース</th><th>ブロック得点</th><th>合計</th>'
     + '</tr></thead><tbody>';
   list.slice(0, 12).forEach(e => {
     html += `<tr><td>#${e.number}</td><td>${e.kill}</td><td>${e.ace}</td><td>${e.block}</td><td><strong>${e.total}</strong></td></tr>`;
@@ -3425,15 +3563,29 @@ function opponentAnalysisHtml(matches) {
   return html;
 }
 
+let matchComparisonAllSectionIds = [];
+
 function accordionSectionHtml(id, title, bodyHtml) {
   const isOpen = matchComparisonOpenSections.has(id);
+  if (!matchComparisonAllSectionIds.includes(id)) matchComparisonAllSectionIds.push(id);
   return `
     <div class="accordion-section">
-      <button type="button" class="accordion-toggle" onclick="toggleAccordionSection('${id}')">
+      <button type="button" class="accordion-toggle" data-section-id="${id}" onclick="toggleAccordionSection('${id}')">
         <span>${escapeHtml(title)}</span><span class="arrow">${isOpen ? '▴' : '▾'}</span>
       </button>
       <div class="accordion-body" style="display:${isOpen ? 'block' : 'none'}">${bodyHtml}</div>
     </div>`;
+}
+
+function toggleAllAccordionSections(btnEl) {
+  const willExpand = btnEl.textContent.trim() !== 'すべて折りたたむ';
+  if (willExpand) {
+    matchComparisonAllSectionIds.forEach(id => matchComparisonOpenSections.add(id));
+  } else {
+    matchComparisonOpenSections.clear();
+  }
+  btnEl.textContent = willExpand ? 'すべて折りたたむ' : 'すべて展開';
+  refreshMatchComparisonIfNeeded();
 }
 
 function showMatchComparison(matches) {
