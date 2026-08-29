@@ -532,7 +532,7 @@ function dvEmptyPlayerStats() {
     back_attempts: 0, back_points: 0, back_errors: 0,
     block_attempts: 0, block_points: 0, block_errors: 0,
     block_touch_own: 0, block_touch_opp: 0,
-    serve_attempts: 0, serve_aces: 0, serve_errors: 0,
+    serve_attempts: 0, serve_aces: 0, serve_errors: 0, serve_half_credit: 0,
     receive_attempts: 0, receive_a: 0, receive_b: 0,
     receive_c: 0, receive_d: 0, receive_errors: 0,
   };
@@ -665,18 +665,23 @@ function dvAnalyzeSet(linesInSet, ownMarker, backAttackCombos) {
       p.block_attempts += 1;
       if (evaluation === '#') p.block_points += 1;
       else if (evaluation === '=') p.block_errors += 1;
+      else if (evaluation === '/') p.block_errors += 1;
       else if (evaluation === '!') p.block_touch_opp += 1;
       else if (evaluation === '+') p.block_touch_own += 1;
     } else if (skill === 'S') {
+      // '+'（相手のレシーブが必ず'-'とペア）と'/'（相手のレシーブが必ず'/'とペア）は
+      // エースではないが相手を崩せている効果的なサーブなので、効果率に半分の重みで加える
       p.serve_attempts += 1;
       if (evaluation === '#') p.serve_aces += 1;
       else if (evaluation === '=') p.serve_errors += 1;
+      else if (evaluation === '+' || evaluation === '/') p.serve_half_credit += 1;
     } else if (skill === 'R') {
       p.receive_attempts += 1;
       if (evaluation === '#') p.receive_a += 1;
       else if (evaluation === '+') p.receive_b += 1;
       else if (evaluation === '=') p.receive_errors += 1;
-      else if (evaluation === '/') p.receive_d += 1;
+      else if (evaluation === '!') p.receive_c += 1;
+      else if (evaluation === '-' || evaluation === '/') p.receive_d += 1;
       else p.receive_c += 1;
     }
   });
@@ -1082,9 +1087,10 @@ function dvPlayerSummary(number, s, roster, name) {
     block_attempts: s.block_attempts, block_points: s.block_points, block_errors: s.block_errors,
     block_touch_own: s.block_touch_own, block_touch_opp: s.block_touch_opp,
     serve_attempts: s.serve_attempts, serve_aces: s.serve_aces, serve_errors: s.serve_errors,
+    serve_half_credit: s.serve_half_credit,
     serve_ace_rate: dvRate(s.serve_aces, s.serve_attempts),
     serve_error_rate: dvRate(s.serve_errors, s.serve_attempts),
-    serve_efficiency: dvRate(s.serve_aces - s.serve_errors, s.serve_attempts),
+    serve_efficiency: dvRate(s.serve_aces - s.serve_errors + 0.5 * s.serve_half_credit, s.serve_attempts),
     receive_attempts: s.receive_attempts, receive_a: s.receive_a, receive_b: s.receive_b,
     receive_c: s.receive_c, receive_d: s.receive_d, receive_errors: s.receive_errors,
     receive_return_rate: dvRate(s.receive_attempts - s.receive_errors, s.receive_attempts),
@@ -2856,7 +2862,7 @@ function combineStatsList(statsList) {
   const sum = {
     attempts: 0, points: 0, errors: 0, blocked: 0,
     block_attempts: 0, block_points: 0, block_errors: 0, block_touch_own: 0, block_touch_opp: 0,
-    serve_attempts: 0, serve_aces: 0, serve_errors: 0,
+    serve_attempts: 0, serve_aces: 0, serve_errors: 0, serve_half_credit: 0,
     receive_attempts: 0, receive_a: 0, receive_b: 0, receive_c: 0, receive_d: 0, receive_errors: 0,
   };
   valid.forEach(s => {
@@ -2868,7 +2874,7 @@ function combineStatsList(statsList) {
     efficiency: dvRate(sum.points - sum.errors - sum.blocked, sum.attempts),
     serve_ace_rate: dvRate(sum.serve_aces, sum.serve_attempts),
     serve_error_rate: dvRate(sum.serve_errors, sum.serve_attempts),
-    serve_efficiency: dvRate(sum.serve_aces - sum.serve_errors, sum.serve_attempts),
+    serve_efficiency: dvRate(sum.serve_aces - sum.serve_errors + 0.5 * sum.serve_half_credit, sum.serve_attempts),
     receive_return_rate: dvRate(sum.receive_attempts - sum.receive_errors, sum.receive_attempts),
     receive_a_rate: dvRate(sum.receive_a, sum.receive_attempts),
   };
@@ -3307,7 +3313,7 @@ EMPTY_PLAYER_STATS = {
     'back_attempts': 0, 'back_points': 0, 'back_errors': 0,
     'block_attempts': 0, 'block_points': 0, 'block_errors': 0,
     'block_touch_own': 0, 'block_touch_opp': 0,
-    'serve_attempts': 0, 'serve_aces': 0, 'serve_errors': 0,
+    'serve_attempts': 0, 'serve_aces': 0, 'serve_errors': 0, 'serve_half_credit': 0,
     'receive_attempts': 0, 'receive_a': 0, 'receive_b': 0,
     'receive_c': 0, 'receive_d': 0, 'receive_errors': 0,
 }
@@ -3389,10 +3395,13 @@ def analyze_set(lines_in_set, own_marker, back_attack_combos):
             # ブロックの判定ルール（実データとスコア推移の答え合わせ済み）：
             # '#'=ブロック得点  '='=ブロック失点
             # '!'=ワンチ・相手コートへ  '+'=ワンチ・自コートへ
+            # '/'も失点として扱う（こうせいさんの指定、2026-08-29〜の試合から）
             p['block_attempts'] += 1
             if evaluation == '#':
                 p['block_points'] += 1
             elif evaluation == '=':
+                p['block_errors'] += 1
+            elif evaluation == '/':
                 p['block_errors'] += 1
             elif evaluation == '!':
                 p['block_touch_opp'] += 1
@@ -3402,11 +3411,17 @@ def analyze_set(lines_in_set, own_marker, back_attack_combos):
         elif skill == 'S':
             # サーブの判定ルール（得点推移で答え合わせ済み）：
             # '#'=サーブエース  '='=サーブミス
+            # '+'（相手のレシーブが必ず'-'＝Cパスとペアになる）と
+            # '/'（相手のレシーブが必ず'/'＝Dパスとペアになる）は、エースではないが
+            # 相手を崩せている効果的なサーブなので、効果率にはエースの半分の重みで加える
+            # （こうせいさんの指定、2026-08-22）
             p['serve_attempts'] += 1
             if evaluation == '#':
                 p['serve_aces'] += 1
             elif evaluation == '=':
                 p['serve_errors'] += 1
+            elif evaluation in ('+', '/'):
+                p['serve_half_credit'] += 1
 
         elif skill == 'R':
             # レシーブ（サーブレシーブ）の判定ルール（得点推移で答え合わせ済み）：
@@ -3414,9 +3429,9 @@ def analyze_set(lines_in_set, own_marker, back_attack_combos):
             # レシーブが '=' として記録される（＝返せなかった、が自動で対になっている）
             # ので、レシーブの'='は「返球できずそのまま失点」で間違いない。
             # ここから先はご指定のパス評価に合わせた表記：
-            # '#'=Aパス（パーフェクト） '+'=Bパス（グッド）
-            # '-'（と、ごく低頻度の'!'）=Cパス（アタックラインに返球）
-            # '/'=Dパス（セッター以外が上げた/相手コートへ返った、大きく崩れた返球）
+            # '#'=Aパス（パーフェクト） '+'=Bパス（グッド） '!'=Cパス
+            # '-'と'/'=Dパス
+            # （2026-08-29〜の試合から評価基準を変更。こうせいさんの指定）
             p['receive_attempts'] += 1
             if evaluation == '#':
                 p['receive_a'] += 1
@@ -3424,9 +3439,11 @@ def analyze_set(lines_in_set, own_marker, back_attack_combos):
                 p['receive_b'] += 1
             elif evaluation == '=':
                 p['receive_errors'] += 1
-            elif evaluation == '/':
+            elif evaluation == '!':
+                p['receive_c'] += 1
+            elif evaluation in ('-', '/'):
                 p['receive_d'] += 1
-            else:  # '-' と '!'
+            else:
                 p['receive_c'] += 1
 
     return stats
@@ -3974,9 +3991,10 @@ def player_summary(number, s, name=None):
         'serve_attempts': s['serve_attempts'],
         'serve_aces': s['serve_aces'],
         'serve_errors': s['serve_errors'],
+        'serve_half_credit': s['serve_half_credit'],
         'serve_ace_rate': rate(s['serve_aces'], s['serve_attempts']),
         'serve_error_rate': rate(s['serve_errors'], s['serve_attempts']),
-        'serve_efficiency': rate(s['serve_aces'] - s['serve_errors'], s['serve_attempts']),
+        'serve_efficiency': rate(s['serve_aces'] - s['serve_errors'] + 0.5 * s['serve_half_credit'], s['serve_attempts']),
         'receive_attempts': s['receive_attempts'],
         'receive_a': s['receive_a'],
         'receive_b': s['receive_b'],
@@ -4213,7 +4231,7 @@ def print_serve_table(stats_dict):
             continue
         ace_rate = s['serve_aces'] / s['serve_attempts']
         err_rate = s['serve_errors'] / s['serve_attempts']
-        efficiency = (s['serve_aces'] - s['serve_errors']) / s['serve_attempts']
+        efficiency = (s['serve_aces'] - s['serve_errors'] + 0.5 * s['serve_half_credit']) / s['serve_attempts']
         print(f"{name:<10}{s['serve_attempts']:>5}{s['serve_aces']:>7}{s['serve_errors']:>5}"
               f"{ace_rate:>9.1%}{err_rate:>8.1%}{efficiency:>8.1%}")
 

@@ -442,7 +442,7 @@ function dvEmptyPlayerStats() {
     back_attempts: 0, back_points: 0, back_errors: 0,
     block_attempts: 0, block_points: 0, block_errors: 0,
     block_touch_own: 0, block_touch_opp: 0,
-    serve_attempts: 0, serve_aces: 0, serve_errors: 0,
+    serve_attempts: 0, serve_aces: 0, serve_errors: 0, serve_half_credit: 0,
     receive_attempts: 0, receive_a: 0, receive_b: 0,
     receive_c: 0, receive_d: 0, receive_errors: 0,
   };
@@ -575,18 +575,23 @@ function dvAnalyzeSet(linesInSet, ownMarker, backAttackCombos) {
       p.block_attempts += 1;
       if (evaluation === '#') p.block_points += 1;
       else if (evaluation === '=') p.block_errors += 1;
+      else if (evaluation === '/') p.block_errors += 1;
       else if (evaluation === '!') p.block_touch_opp += 1;
       else if (evaluation === '+') p.block_touch_own += 1;
     } else if (skill === 'S') {
+      // '+'（相手のレシーブが必ず'-'とペア）と'/'（相手のレシーブが必ず'/'とペア）は
+      // エースではないが相手を崩せている効果的なサーブなので、効果率に半分の重みで加える
       p.serve_attempts += 1;
       if (evaluation === '#') p.serve_aces += 1;
       else if (evaluation === '=') p.serve_errors += 1;
+      else if (evaluation === '+' || evaluation === '/') p.serve_half_credit += 1;
     } else if (skill === 'R') {
       p.receive_attempts += 1;
       if (evaluation === '#') p.receive_a += 1;
       else if (evaluation === '+') p.receive_b += 1;
       else if (evaluation === '=') p.receive_errors += 1;
-      else if (evaluation === '/') p.receive_d += 1;
+      else if (evaluation === '!') p.receive_c += 1;
+      else if (evaluation === '-' || evaluation === '/') p.receive_d += 1;
       else p.receive_c += 1;
     }
   });
@@ -992,9 +997,10 @@ function dvPlayerSummary(number, s, roster, name) {
     block_attempts: s.block_attempts, block_points: s.block_points, block_errors: s.block_errors,
     block_touch_own: s.block_touch_own, block_touch_opp: s.block_touch_opp,
     serve_attempts: s.serve_attempts, serve_aces: s.serve_aces, serve_errors: s.serve_errors,
+    serve_half_credit: s.serve_half_credit,
     serve_ace_rate: dvRate(s.serve_aces, s.serve_attempts),
     serve_error_rate: dvRate(s.serve_errors, s.serve_attempts),
-    serve_efficiency: dvRate(s.serve_aces - s.serve_errors, s.serve_attempts),
+    serve_efficiency: dvRate(s.serve_aces - s.serve_errors + 0.5 * s.serve_half_credit, s.serve_attempts),
     receive_attempts: s.receive_attempts, receive_a: s.receive_a, receive_b: s.receive_b,
     receive_c: s.receive_c, receive_d: s.receive_d, receive_errors: s.receive_errors,
     receive_return_rate: dvRate(s.receive_attempts - s.receive_errors, s.receive_attempts),
@@ -2766,7 +2772,7 @@ function combineStatsList(statsList) {
   const sum = {
     attempts: 0, points: 0, errors: 0, blocked: 0,
     block_attempts: 0, block_points: 0, block_errors: 0, block_touch_own: 0, block_touch_opp: 0,
-    serve_attempts: 0, serve_aces: 0, serve_errors: 0,
+    serve_attempts: 0, serve_aces: 0, serve_errors: 0, serve_half_credit: 0,
     receive_attempts: 0, receive_a: 0, receive_b: 0, receive_c: 0, receive_d: 0, receive_errors: 0,
   };
   valid.forEach(s => {
@@ -2778,7 +2784,7 @@ function combineStatsList(statsList) {
     efficiency: dvRate(sum.points - sum.errors - sum.blocked, sum.attempts),
     serve_ace_rate: dvRate(sum.serve_aces, sum.serve_attempts),
     serve_error_rate: dvRate(sum.serve_errors, sum.serve_attempts),
-    serve_efficiency: dvRate(sum.serve_aces - sum.serve_errors, sum.serve_attempts),
+    serve_efficiency: dvRate(sum.serve_aces - sum.serve_errors + 0.5 * sum.serve_half_credit, sum.serve_attempts),
     receive_return_rate: dvRate(sum.receive_attempts - sum.receive_errors, sum.receive_attempts),
     receive_a_rate: dvRate(sum.receive_a, sum.receive_attempts),
   };

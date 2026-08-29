@@ -1,5 +1,15 @@
 [
   {
+    "matchDate": "09/08/2026",
+    "opponent": "江戸川大学",
+    "dataFile": "2026-08-09_江戸川大学.json"
+  },
+  {
+    "matchDate": "09/08/2026",
+    "opponent": "早稲田大学",
+    "dataFile": "2026-08-09_早稲田大学.json"
+  },
+  {
     "matchDate": "28/07/2026",
     "opponent": "嘉悦大学",
     "dataFile": "2026-07-28_嘉悦大学.json"
