@@ -652,12 +652,12 @@ function dvAnalyzeSet(linesInSet, ownMarker, backAttackCombos) {
       else if (evaluation === '!') p.block_touch_opp += 1;
       else if (evaluation === '+') p.block_touch_own += 1;
     } else if (skill === 'S') {
-      // '+'（相手のレシーブが必ず'-'とペア）と'/'（相手のレシーブが必ず'/'とペア）は
-      // エースではないが相手を崩せている効果的なサーブなので、効果率に半分の重みで加える
+      // '+'・'!'・'-' は、エースではないが相手のレシーブを崩せている効果的なサーブなので、
+      // 効果率に半分の重みで加える（こうせいさんの指定、2026-08-29）
       p.serve_attempts += 1;
       if (evaluation === '#') p.serve_aces += 1;
       else if (evaluation === '=') p.serve_errors += 1;
-      else if (evaluation === '+' || evaluation === '/') p.serve_half_credit += 1;
+      else if (evaluation === '+' || evaluation === '!' || evaluation === '-') p.serve_half_credit += 1;
     } else if (skill === 'R') {
       p.receive_attempts += 1;
       if (evaluation === '#') p.receive_a += 1;
@@ -1105,6 +1105,7 @@ function dvPlayerSummary(number, s, roster, name) {
     block_touch_own: s.block_touch_own, block_touch_opp: s.block_touch_opp,
     serve_attempts: s.serve_attempts, serve_aces: s.serve_aces, serve_errors: s.serve_errors,
     serve_half_credit: s.serve_half_credit,
+    serve_plus: s.serve_plus, serve_exclaim: s.serve_exclaim,
     serve_ace_rate: dvRate(s.serve_aces, s.serve_attempts),
     serve_error_rate: dvRate(s.serve_errors, s.serve_attempts),
     serve_efficiency: dvRate(s.serve_aces - s.serve_errors + 0.5 * s.serve_half_credit, s.serve_attempts),
@@ -1531,6 +1532,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
       <div class="stat-tile"><div class="k">打数</div><div class="v">${totalStats.serve_attempts}</div></div>
       <div class="stat-tile"><div class="k">エース</div><div class="v">${totalStats.serve_aces}</div></div>
       <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.serve_errors}</div></div>
+      <div class="stat-tile"><div class="k">効果本数</div><div class="v">${totalStats.serve_half_credit}<div style="font-size:11px;color:var(--text-muted);font-weight:400">＋／！／－の合計</div></div></div>
       <div class="stat-tile"><div class="k">エース率</div><div class="v">${pct(totalStats.serve_ace_rate)}</div></div>
       <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pct(totalStats.serve_error_rate)}</div></div>
       <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.serve_efficiency)}</div></div>
@@ -1755,6 +1757,7 @@ function comparisonTableHtml(players) {
     html += comparisonRowHtml('打数', players, p => p.serve_attempts, false);
     html += comparisonRowHtml('エース', players, p => p.serve_aces, false);
     html += comparisonRowHtml('ミス', players, p => p.serve_errors, false);
+    html += comparisonRowHtml('効果本数', players, p => p.serve_half_credit, false);
     html += comparisonRowHtml('エース率', players, p => p.serve_ace_rate, true);
     html += comparisonRowHtml('ミス率', players, p => p.serve_error_rate, true);
     html += comparisonRowHtml('効果率', players, p => p.serve_efficiency, true);
@@ -2826,6 +2829,7 @@ function matchComparisonTableHtml(matches) {
   html += matchComparisonRowHtml('打数', matches, m => m.team.total.serve_attempts, false);
   html += matchComparisonRowHtml('エース', matches, m => m.team.total.serve_aces, false);
   html += matchComparisonRowHtml('ミス', matches, m => m.team.total.serve_errors, false);
+  html += matchComparisonRowHtml('効果本数', matches, m => m.team.total.serve_half_credit, false);
   html += matchComparisonRowHtml('エース率', matches, m => m.team.total.serve_ace_rate, true);
   html += matchComparisonRowHtml('ミス率', matches, m => m.team.total.serve_error_rate, true);
   html += matchComparisonRowHtml('効果率', matches, m => m.team.total.serve_efficiency, true);
@@ -3098,6 +3102,7 @@ function playerAcrossMatchesTableHtml(number, matches) {
     html += row('打数', p => p.serve_attempts, false);
     html += row('エース', p => p.serve_aces, false);
     html += row('ミス', p => p.serve_errors, false);
+    html += row('効果本数', p => p.serve_half_credit, false);
     html += row('エース率', p => p.serve_ace_rate, true);
     html += row('ミス率', p => p.serve_error_rate, true);
     html += row('効果率', p => p.serve_efficiency, true);
@@ -3307,6 +3312,7 @@ function combinedTableHtml(stats) {
     html += row('打数', stats.serve_attempts, false);
     html += row('エース', stats.serve_aces, false);
     html += row('ミス', stats.serve_errors, false);
+    html += row('効果本数', stats.serve_half_credit, false);
     html += row('エース率', stats.serve_ace_rate, true);
     html += row('ミス率', stats.serve_error_rate, true);
     html += row('効果率', stats.serve_efficiency, true);
