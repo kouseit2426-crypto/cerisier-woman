@@ -205,18 +205,24 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .lineup-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 460px; margin: 0 auto; }
   .lineup-row + .lineup-row { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border); }
-  .jersey-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .jersey-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
   .jersey-name-box {
     position: relative; display: inline-flex; align-items: center; justify-content: center;
-    min-width: 84px; padding: 12px 14px; border-radius: 10px;
+    max-width: 100%; box-sizing: border-box; padding: 12px 8px; border-radius: 10px;
     background: var(--surface-1); border: 1px solid var(--border);
     color: var(--text-primary); font-size: 14px; font-weight: 700; text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .jersey-badge {
     position: absolute; right: -6px; top: -6px; width: 22px; height: 22px; border-radius: 50%;
     background: #e5484d; color: #fff; font-size: 11px; font-weight: 700;
     display: flex; align-items: center; justify-content: center;
     border: 2px solid var(--page-plane); box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  }
+  @media (max-width: 480px) {
+    .lineup-court { padding: 14px 6px; }
+    .lineup-row { gap: 4px; }
+    .jersey-name-box { font-size: 11.5px; padding: 10px 4px; letter-spacing: -0.2px; }
   }
 
   .player-grid { display: flex; flex-wrap: wrap; gap: 8px; }

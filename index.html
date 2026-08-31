@@ -109,26 +109,6 @@
   }
   .card h2 { font-size: 15px; margin: 0 0 16px; color: var(--text-primary); }
 
-  .lineup-court {
-    background: var(--page-plane); border: 1px solid var(--border); border-radius: 14px;
-    padding: 20px 14px;
-  }
-  .lineup-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 460px; margin: 0 auto; }
-  .lineup-row + .lineup-row { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border); }
-  .jersey-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  .jersey-name-box {
-    position: relative; display: inline-flex; align-items: center; justify-content: center;
-    min-width: 84px; padding: 12px 14px; border-radius: 10px;
-    background: var(--surface-1); border: 1px solid var(--border);
-    color: var(--text-primary); font-size: 14px; font-weight: 700; text-align: center;
-  }
-  .jersey-badge {
-    position: absolute; right: -6px; top: -6px; width: 22px; height: 22px; border-radius: 50%;
-    background: #e5484d; color: #fff; font-size: 11px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    border: 2px solid var(--page-plane); box-shadow: 0 1px 2px rgba(0,0,0,0.25);
-  }
-
   .player-grid { display: flex; flex-wrap: wrap; gap: 8px; }
   .player-chip {
     font-family: inherit; font-size: 13.5px; cursor: pointer;
@@ -2023,22 +2003,14 @@ function scoreChartSvg(points, title, ownLabel, opponentLabel) {
 
 // ==================== セット開始時点のスタメン（P1〜P6） ====================
 // 選手ランキングのすぐ上に、セットを選ぶボタンで切り替えて見せる（1試合を選んでいるときのみ）
-function jerseySlotHtml(number, isServer) {
-  const name = ROSTER[number] || `#${number}`;
-  const badge = isServer ? '<span class="jersey-badge">S</span>' : '';
-  return `<div class="jersey-slot">`
-    + `<div class="jersey-name-box">${badge}${escapeHtml(name)}</div>`
-    + `</div>`;
-}
-
 function startingLineupHtml(lineup) {
   if (!lineup || !lineup.length) return '<p class="hint">このセットのスタメン情報は取得できませんでした（この試合を追加した時点では未対応でした）。</p>';
-  // コート図と同じ並びにする：前衛（ネット側）＝P4,P3,P2／後衛＝P5,P6,P1（サーブ位置）
-  const front = [lineup[3], lineup[2], lineup[1]];
-  const back = [lineup[4], lineup[5], lineup[0]];
-  let html = '<div class="lineup-court">';
-  html += '<div class="lineup-row">' + front.map(n => jerseySlotHtml(n, false)).join('') + '</div>';
-  html += '<div class="lineup-row">' + back.map(n => jerseySlotHtml(n, n === lineup[0])).join('') + '</div>';
+  let html = '<div class="stat-tiles">';
+  lineup.forEach((number, i) => {
+    const name = ROSTER[number] || `#${number}`;
+    html += `<div class="stat-tile"><div class="k">S${i + 1}</div>`
+      + `<div class="v" style="font-size:15px">${escapeHtml(name)}</div></div>`;
+  });
   html += '</div>';
   return html;
 }
