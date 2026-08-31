@@ -543,7 +543,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         <span class="collapse-arrow">▾</span>
       </button>
       <div class="collapsible-body">
-        <p class="hint" style="margin-top:-6px">P1が基本的にサーブ位置（次に回転して前衛に上がる並び）です。セットを選んでください。</p>
+        <p class="hint" style="margin-top:-6px">S1が基本的にサーブ位置（次に回転して前衛に上がる並び）です。セットを選んでください。</p>
         <div class="player-grid" id="startingLineupSetButtons"></div>
         <div id="startingLineupBody" style="margin-top:16px"></div>
       </div>
@@ -2098,9 +2098,8 @@ function startingLineupHtml(lineup) {
   let html = '<div class="stat-tiles">';
   lineup.forEach((number, i) => {
     const name = ROSTER[number] || `#${number}`;
-    html += `<div class="stat-tile"><div class="k">P${i + 1}</div>`
-      + `<div class="v" style="font-size:15px">${escapeHtml(name)}<br>`
-      + `<span style="font-size:12px;font-weight:400">#${number}</span></div></div>`;
+    html += `<div class="stat-tile"><div class="k">S${i + 1}</div>`
+      + `<div class="v" style="font-size:15px">${escapeHtml(name)}</div></div>`;
   });
   html += '</div>';
   return html;
