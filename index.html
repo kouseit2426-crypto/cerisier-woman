@@ -584,12 +584,12 @@
       <div class="collapsible-body">
         <p class="hint" style="margin-top:-6px" id="rotationCardHint">
           セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。
-          攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。セットを選んでください。
+          攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。セットを選んでください。
         </p>
         <div class="player-grid" id="rotationSetButtons"></div>
         <h4 style="margin:16px 0 8px;font-size:14px" id="tossDistributionLabel">トス配分（％）</h4>
         <p class="hint" style="margin-top:-4px">
-          「その他」はレフト・ライト・ミドル・パイプのどれにも当てはまらない攻撃で、ほとんどがセッターダンプ（ツー）です。
+          「その他」はセッターダンプ（ツー）のみが入ります。
         </p>
         <div id="tossDistributionBody"></div>
         <h4 style="margin:16px 0 8px;font-size:14px" id="attackTechniqueLabel">打法（％）</h4>
@@ -614,12 +614,15 @@
 // OWN_TEAM_CODE と ROSTER は、実際のHTMLではチームごとの値に置き換えて埋め込む。
 
 const CATEGORY_ORDER = ['left', 'right', 'middle', 'pipe', 'other'];
-const CATEGORY_LABELS = { left: 'レフト', right: 'ライト', middle: 'ミドル', pipe: 'パイプ', other: 'その他' };
+const CATEGORY_LABELS = { left: 'レフト', right: 'ライト', middle: 'ミドル', pipe: 'バックアタック', other: 'その他' };
 const COMBO_CATEGORY_MAP = { F: 'left', B: 'right', C: 'middle', P: 'pipe' };
 // VolleyStationのテンプレートの説明文と実際の運用が食い違うコンビコードの個別補正
 // （P2はテンプレート上「緊急時の2段トス攻撃」だが、実際は「短いレフトのハイセット」として
 // 使われている。こうせいさんの説明により2026-08-29確認）
-const COMBO_CATEGORY_OVERRIDES = { P2: 'left' };
+// P9・L9はコンビ表では分類文字'B'（ライト）扱いだが、実際はゾーン9＝後衛からのバックライト攻撃
+// なので「バックアタック」（内部キーは従来のpipeのまま）にまとめる。P3は分類文字が空欄だが
+// 実際にはミドル攻撃として使われている（いずれもこうせいさんに確認、2026-08-31）。
+const COMBO_CATEGORY_OVERRIDES = { P2: 'left', P9: 'pipe', L9: 'pipe', P3: 'middle' };
 // 打法（強打／フェイント）：H=強打、T=フェイント（こうせいさんに確認、2026-08-29）。
 // ※このH/Tはスキル直後の1文字（例 "*05AH#P5"の"H"）ではなく、コードの末尾側
 // （'~'区切りの最後のかたまり。例 "*05AH#P5~24~H2"の"H2"）に入っている「ショットタイプ」の文字。
@@ -856,6 +859,9 @@ function dvAnalyzeRotationAttacks(linesInSet, ownMarker, comboCategories) {
     if (!m) return;
     const team = m[1], skill = m[3], skillType = m[4], evaluation = m[5], combo = m[6];
     if (team !== ownMarker || skill !== 'A') return;
+    // PPはセッターダンプではなく「ダイレクト」攻撃で、トス配分・打法別・ローテーション別の
+    // 集計にはなじまないため丸ごと除外する（選手個人の通常のスパイク統計は従来通り。2026-08-31）
+    if (combo === 'PP') return;
 
     const entry = rotationStats[rotationNumber];
     entry.attempts += 1;
@@ -2297,7 +2303,7 @@ function runHighlightsHtml(scoreProgression) {
   return html;
 }
 
-// トス配分（％）：レフト／ライト／ミドル／パイプ／その他に、打数のうち何%が上がったかを表示する
+// トス配分（％）：レフト／ライト／ミドル／バックアタック／その他に、打数のうち何%が上がったかを表示する
 // （rowsの中の「合計」行＝その選択範囲全体の内訳を使う。2026-08-29追加）
 function tossDistributionHtml(totalRow) {
   if (!totalRow || !totalRow.attempts) return '<p class="hint">データがありません。</p>';
@@ -2340,7 +2346,7 @@ function selectRotationSet(rows, chipEl) {
 function showRotationTables() {
   document.getElementById('rotationCardLabel').textContent = 'ローテーション別 攻撃タイプ分布（チーム全体）';
   document.getElementById('rotationCardHint').textContent =
-    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。セットを選んでください。';
+    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。セットを選んでください。';
   const btnEl = document.getElementById('rotationSetButtons');
   btnEl.innerHTML = '';
   const items = DATA.rotation.bySet.map(s => ({ label: `第${s.setNumber}セット`, rows: s.rows }));
@@ -2363,7 +2369,7 @@ function showRotationTablesCombined(entries, dataList) {
   document.getElementById('rotationCardLabel').textContent =
     `ローテーション別 攻撃タイプ分布（チーム全体・選んだ${entries.length}試合）`;
   document.getElementById('rotationCardHint').textContent =
-    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／パイプ）は使用した攻撃コンビの分類によるものです。試合ごと、または選んだ試合すべての合計（全体）を選べます。';
+    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。試合ごと、または選んだ試合すべての合計（全体）を選べます。';
   const btnEl = document.getElementById('rotationSetButtons');
   btnEl.innerHTML = '';
   const items = dataList.map(d => ({
