@@ -1366,6 +1366,7 @@ function dvPlayerSummary(number, s, roster, name) {
     receive_c: s.receive_c, receive_d: s.receive_d, receive_errors: s.receive_errors,
     receive_return_rate: dvRate(s.receive_attempts - s.receive_errors, s.receive_attempts),
     receive_a_rate: dvRate(s.receive_a, s.receive_attempts),
+    receive_ab_rate: dvRate(s.receive_a + s.receive_b, s.receive_attempts),
   };
   TECH_ORDER.forEach(tech => {
     const tAttempts = s[`tech_${tech}_attempts`];
@@ -1804,6 +1805,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
       <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.receive_errors}</div></div>
       <div class="stat-tile"><div class="k">返球率</div><div class="v">${pct(totalStats.receive_return_rate)}</div></div>
       <div class="stat-tile"><div class="k">A率</div><div class="v">${pct(totalStats.receive_a_rate)}</div></div>
+      <div class="stat-tile"><div class="k">AB率</div><div class="v">${pct(totalStats.receive_ab_rate)}</div></div>
     `;
   } else {
     receiveSectionWrap.style.display = 'none';
@@ -2020,6 +2022,7 @@ function comparisonTableHtml(players) {
     html += comparisonRowHtml('ミス', players, p => p.receive_errors, false);
     html += comparisonRowHtml('返球率', players, p => p.receive_return_rate, true);
     html += comparisonRowHtml('A率', players, p => p.receive_a_rate, true);
+    html += comparisonRowHtml('AB率', players, p => p.receive_ab_rate, true);
   }
 
   html += '</tbody></table></div>';
@@ -3030,11 +3033,13 @@ function playerLeaderboardHtml(players) {
   const byKill = topList(players, 'kill_rate', 'attempts');
   const byServe = topList(players, 'serve_efficiency', 'serve_attempts');
   const byReceive = topList(players, 'receive_a_rate', 'receive_attempts');
+  const byReceiveAB = topList(players, 'receive_ab_rate', 'receive_attempts');
 
   return '<div class="rank-grid">'
     + `<div><h4>スパイク決定率</h4>${rowsHtml(byKill, 'kill_rate', p => p.points, 'attempts')}</div>`
     + `<div><h4>サーブ効果率</h4>${rowsHtml(byServe, 'serve_efficiency', p => p.serve_aces + p.serve_half_credit, 'serve_attempts')}</div>`
     + `<div><h4>レシーブA率</h4>${rowsHtml(byReceive, 'receive_a_rate', p => p.receive_a, 'receive_attempts')}</div>`
+    + `<div><h4>レシーブAB率</h4>${rowsHtml(byReceiveAB, 'receive_ab_rate', p => p.receive_a + p.receive_b, 'receive_attempts')}</div>`
     + '</div>';
 }
 
@@ -3111,6 +3116,7 @@ function matchComparisonTableHtml(matches) {
   html += matchComparisonRowHtml('ミス', matches, m => m.team.total.receive_errors, false);
   html += matchComparisonRowHtml('返球率', matches, m => m.team.total.receive_return_rate, true);
   html += matchComparisonRowHtml('A率', matches, m => m.team.total.receive_a_rate, true);
+  html += matchComparisonRowHtml('AB率', matches, m => m.team.total.receive_ab_rate, true);
 
   html += matchComparisonSectionHtml('サイドアウト率・ブレイク率（チーム全体）', colspan);
   html += matchComparisonRowHtml('サーブ本数', matches, m => m.sideOutBreak.total.serve_total, false);
@@ -3385,6 +3391,7 @@ function playerAcrossMatchesTableHtml(number, matches) {
     html += row('ミス', p => p.receive_errors, false);
     html += row('返球率', p => p.receive_return_rate, true);
     html += row('A率', p => p.receive_a_rate, true);
+    html += row('AB率', p => p.receive_ab_rate, true);
   }
 
   html += '</tbody></table></div>';
@@ -3419,6 +3426,7 @@ function combineStatsList(statsList) {
     serve_efficiency: dvRate(sum.serve_aces - sum.serve_errors + 0.5 * sum.serve_half_credit, sum.serve_attempts),
     receive_return_rate: dvRate(sum.receive_attempts - sum.receive_errors, sum.receive_attempts),
     receive_a_rate: dvRate(sum.receive_a, sum.receive_attempts),
+    receive_ab_rate: dvRate(sum.receive_a + sum.receive_b, sum.receive_attempts),
   };
   TECH_ORDER.forEach(t => {
     result[`tech_${t}_kill_rate`] = dvRate(sum[`tech_${t}_points`], sum[`tech_${t}_attempts`]);
@@ -3595,6 +3603,7 @@ function combinedTableHtml(stats) {
     html += row('ミス', stats.receive_errors, false);
     html += row('返球率', stats.receive_return_rate, true);
     html += row('A率', stats.receive_a_rate, true);
+    html += row('AB率', stats.receive_ab_rate, true);
   }
 
   html += '</tbody></table></div>';
@@ -4665,6 +4674,7 @@ def player_summary(number, s, name=None):
         'receive_errors': s['receive_errors'],
         'receive_return_rate': rate(s['receive_attempts'] - s['receive_errors'], s['receive_attempts']),
         'receive_a_rate': rate(s['receive_a'], s['receive_attempts']),
+        'receive_ab_rate': rate(s['receive_a'] + s['receive_b'], s['receive_attempts']),
     }
     for tech in TECH_ORDER:
         t_attempts = s[f'tech_{tech}_attempts']
@@ -4909,7 +4919,7 @@ def print_serve_table(stats_dict):
 
 def print_receive_table(stats_dict):
     header = (f"{'選手':<10}{'本数':>5}{'A':>5}{'B':>5}{'C':>5}{'D':>5}"
-              f"{'ミス':>5}{'返球率':>8}{'A率':>7}")
+              f"{'ミス':>5}{'返球率':>8}{'A率':>7}{'AB率':>8}")
     print(header)
     print('-' * len(header))
     for number in sorted(stats_dict.keys()):
@@ -4919,8 +4929,9 @@ def print_receive_table(stats_dict):
             continue
         return_rate = (s['receive_attempts'] - s['receive_errors']) / s['receive_attempts']
         a_rate = s['receive_a'] / s['receive_attempts']
+        ab_rate = (s['receive_a'] + s['receive_b']) / s['receive_attempts']
         print(f"{name:<10}{s['receive_attempts']:>5}{s['receive_a']:>5}{s['receive_b']:>5}"
-              f"{s['receive_c']:>5}{s['receive_d']:>5}{s['receive_errors']:>5}{return_rate:>8.1%}{a_rate:>7.1%}")
+              f"{s['receive_c']:>5}{s['receive_d']:>5}{s['receive_errors']:>5}{return_rate:>8.1%}{a_rate:>7.1%}{ab_rate:>8.1%}")
 
 
 def fmt_pct(v):
