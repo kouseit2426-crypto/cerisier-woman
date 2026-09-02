@@ -1750,7 +1750,7 @@ function renderTechSection(tech, headerElId, tilesElId, bodyElId, totalStats, se
     <div class="stat-tile"><div class="k">打数</div><div class="v">${attempts}</div></div>
     <div class="stat-tile"><div class="k">得点</div><div class="v">${points}</div></div>
     <div class="stat-tile"><div class="k">ミス</div><div class="v">${errors}</div></div>
-    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(killRate)}</div></div>
+    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pctCount(killRate, points, attempts)}</div></div>
   `;
 
   document.getElementById(headerElId).textContent = hasMatchLabels ? '試合' : 'セット';
@@ -1790,7 +1790,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
     <div class="stat-tile"><div class="k">得点</div><div class="v">${totalStats.points}</div></div>
     <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.errors}</div></div>
     <div class="stat-tile"><div class="k">被ブロック</div><div class="v">${totalStats.blocked}</div></div>
-    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(totalStats.kill_rate)}</div></div>
+    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pctCount(totalStats.kill_rate, totalStats.points, totalStats.attempts)}</div></div>
     <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.efficiency)}</div></div>
   `;
 
@@ -1856,9 +1856,9 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
       <div class="stat-tile"><div class="k">エース</div><div class="v">${totalStats.serve_aces}</div></div>
       <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.serve_errors}</div></div>
       <div class="stat-tile"><div class="k">効果本数</div><div class="v">${totalStats.serve_half_credit}<div style="font-size:11px;color:var(--text-muted);font-weight:400">＋と／の合計</div></div></div>
-      <div class="stat-tile"><div class="k">エース率</div><div class="v">${pct(totalStats.serve_ace_rate)}</div></div>
-      <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pct(totalStats.serve_error_rate)}</div></div>
-      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.serve_efficiency)}</div></div>
+      <div class="stat-tile"><div class="k">エース率</div><div class="v">${pctCount(totalStats.serve_ace_rate, totalStats.serve_aces, totalStats.serve_attempts)}</div></div>
+      <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pctCount(totalStats.serve_error_rate, totalStats.serve_errors, totalStats.serve_attempts)}</div></div>
+      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pctCount(totalStats.serve_efficiency, totalStats.serve_aces + totalStats.serve_half_credit, totalStats.serve_attempts)}</div></div>
     `;
   } else {
     serveSectionWrap.style.display = 'none';
@@ -1875,9 +1875,9 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
       <div class="stat-tile"><div class="k">Cパス</div><div class="v">${totalStats.receive_c}</div></div>
       <div class="stat-tile"><div class="k">Dパス</div><div class="v">${totalStats.receive_d}</div></div>
       <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.receive_errors}</div></div>
-      <div class="stat-tile"><div class="k">返球率</div><div class="v">${pct(totalStats.receive_return_rate)}</div></div>
-      <div class="stat-tile"><div class="k">A率</div><div class="v">${pct(totalStats.receive_a_rate)}</div></div>
-      <div class="stat-tile"><div class="k">AB率</div><div class="v">${pct(totalStats.receive_ab_rate)}</div></div>
+      <div class="stat-tile"><div class="k">返球率</div><div class="v">${pctCount(totalStats.receive_return_rate, totalStats.receive_attempts - totalStats.receive_errors, totalStats.receive_attempts)}</div></div>
+      <div class="stat-tile"><div class="k">A率</div><div class="v">${pctCount(totalStats.receive_a_rate, totalStats.receive_a, totalStats.receive_attempts)}</div></div>
+      <div class="stat-tile"><div class="k">AB率</div><div class="v">${pctCount(totalStats.receive_ab_rate, totalStats.receive_a + totalStats.receive_b, totalStats.receive_attempts)}</div></div>
     `;
   } else {
     receiveSectionWrap.style.display = 'none';
