@@ -348,6 +348,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .stat-tile { background: var(--page-plane); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
   .stat-tile .k { font-size: 11.5px; color: var(--text-muted); margin-bottom: 4px; }
   .stat-tile .v { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .pct-count { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 3px; white-space: nowrap; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
@@ -1659,6 +1660,13 @@ function pct(v) {
   return (v * 100).toFixed(1) + '%';
 }
 
+// ％の後ろに「【本数/分母】」を小さめの文字で添える共通表示（例: 40.0%【88/220本】）
+function pctCount(v, num, den, unit) {
+  unit = unit === undefined ? '本' : unit;
+  const countText = (den || den === 0) ? `${num}/${den}${unit}` : `${num}${unit}`;
+  return `${pct(v)}<span class="pct-count">【${countText}】</span>`;
+}
+
 function renderTeamGrid() {
   const grid = document.getElementById('teamGrid');
   grid.innerHTML = '';
@@ -2468,8 +2476,7 @@ function tossDistributionHtml(totalRow) {
   CATEGORY_ORDER.forEach(cat => {
     const c = totalRow.categories[cat];
     const share = totalRow.attempts ? c.attempts / totalRow.attempts : null;
-    html += `<div class="stat-tile"><div class="k">${CATEGORY_LABELS[cat]}</div><div class="v">${pct(share)}`
-      + `<div style="font-size:11px;color:var(--text-muted);font-weight:400">${c.attempts}/${totalRow.attempts}</div></div></div>`;
+    html += `<div class="stat-tile"><div class="k">${CATEGORY_LABELS[cat]}</div><div class="v">${pctCount(share, c.attempts, totalRow.attempts)}</div></div>`;
   });
   html += '</div>';
   return html;
@@ -2483,8 +2490,7 @@ function attackTechniqueHtml(totalRow) {
   TECH_ORDER.forEach(tech => {
     const t = totalRow.techniques[tech];
     const share = totalRow.attempts ? t.attempts / totalRow.attempts : null;
-    html += `<div class="stat-tile"><div class="k">${TECH_LABELS[tech]}</div><div class="v">${pct(share)}`
-      + `<div style="font-size:11px;color:var(--text-muted);font-weight:400">${t.attempts}/${totalRow.attempts}</div></div></div>`;
+    html += `<div class="stat-tile"><div class="k">${TECH_LABELS[tech]}</div><div class="v">${pctCount(share, t.attempts, totalRow.attempts)}</div></div>`;
   });
   html += '</div>';
   return html;
@@ -3503,8 +3509,7 @@ function playerLeaderboardHtml(players) {
   function rowsHtml(list, key, numGetter, denKey) {
     if (!list.length) return '<p class="hint">規定本数（' + MIN_ATTEMPTS + '本）以上の選手がいません。</p>';
     return '<table class="rotation-table"><thead><tr><th>順位</th><th>選手</th><th>値</th></tr></thead><tbody>'
-      + list.map((p, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${pct(p[key])}`
-        + `<div style="font-size:11px;color:var(--text-muted)">${numGetter(p)}/${p[denKey]}</div></td></tr>`).join('')
+      + list.map((p, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${pctCount(p[key], numGetter(p), p[denKey])}</td></tr>`).join('')
       + '</tbody></table>';
   }
   const byKill = topList(players, 'kill_rate', 'attempts');
