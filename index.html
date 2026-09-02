@@ -88,6 +88,14 @@
   }
   .player-check-item:hover { background: var(--grid); }
   .player-check-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--series-blue); cursor: pointer; }
+  .match-row { display: flex; align-items: center; gap: 2px; }
+  .match-row .player-check-item { flex: 1; min-width: 0; }
+  .match-row .player-check-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .match-summary-icon-btn {
+    flex-shrink: 0; border: none; background: none; cursor: pointer; font-size: 15px;
+    padding: 6px 8px; border-radius: 6px; color: var(--text-muted); line-height: 1;
+  }
+  .match-summary-icon-btn:hover { background: var(--grid); color: var(--series-blue); }
   .match-month-header {
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     padding: 8px 6px 4px; font-size: 12px; font-weight: 700; color: var(--text-muted);
@@ -266,6 +274,36 @@
   .score-chart-legend { display: flex; gap: 18px; margin-top: 6px; }
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
   .legend-swatch { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+
+  .match-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .match-title-row h2 { margin: 0; font-size: 20px; color: var(--text-secondary); }
+  .summary-btn {
+    font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    padding: 9px 16px; border-radius: 9px; white-space: nowrap;
+    border: 1px solid var(--series-blue); background: var(--surface-1); color: var(--series-blue);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .summary-btn:hover { background: var(--series-blue); color: #fff; }
+
+  .summary-overlay {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(10,10,10,0.62); padding: 24px;
+    align-items: flex-start; justify-content: center; overflow-y: auto;
+  }
+  .summary-modal {
+    background: #ffffff; border-radius: 14px; padding: 16px;
+    max-width: 780px; width: 100%; margin: 20px 0;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .summary-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 14px; }
+  .summary-close-btn {
+    font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    padding: 9px 14px; border-radius: 9px; border: 1px solid #d8d8d4; background: #fff; color: #52514e;
+  }
+  .summary-close-btn:hover { background: #f2f2ef; }
+  .summary-scroll { max-height: 82vh; overflow-y: auto; border-radius: 8px; text-align: center; background: #f2f2ef; padding: 12px; }
+  #summaryImg { max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.12); }
+  .summary-hint { margin: -4px 0 12px; font-size: 12px; color: var(--text-muted); text-align: right; }
 </style>
 </head>
 <body>
@@ -333,7 +371,10 @@
     <div id="matchComparisonBody"></div>
   </div>
   <div id="mainArea">
-  <h2 id="matchTitle" style="font-size:20px;margin:0 0 16px;color:var(--text-secondary)"></h2>
+  <div class="match-title-row">
+    <h2 id="matchTitle"></h2>
+    <button type="button" class="summary-btn" id="summaryBtn" style="display:none">🖼 試合サマリーを1枚で見る</button>
+  </div>
 
   <div class="tab-nav">
     <button class="tab-btn active" id="tabBtn1" onclick="showPage(1)">選手別スタッツ</button>
@@ -605,6 +646,20 @@
   </div>
   </div>
 </div>
+</div>
+
+<div class="summary-overlay" id="summaryOverlay">
+  <div class="summary-modal">
+    <div class="summary-modal-actions">
+      <button type="button" class="summary-btn" id="summarySaveBtn">画像として保存</button>
+      <button type="button" class="summary-close-btn" id="summaryCloseBtn">✕ 閉じる</button>
+    </div>
+    <p class="summary-hint">保存できない場合は、下の画像を長押しして保存できます</p>
+    <div class="summary-scroll">
+      <p class="hint" id="summaryLoading">読み込み中…</p>
+      <img id="summaryImg" alt="試合サマリー画像" style="display:none">
+    </div>
+  </div>
 </div>
 
 <script>
@@ -2784,6 +2839,9 @@ function renderMatchChecklist() {
     list.appendChild(header);
 
     groupMatches.forEach(m => {
+      const row = document.createElement('div');
+      row.className = 'match-row';
+
       const itemLabel = document.createElement('label');
       itemLabel.className = 'player-check-item';
       const cb = document.createElement('input');
@@ -2794,7 +2852,20 @@ function renderMatchChecklist() {
       span.textContent = `${formatMatchDate(m.matchDate)} 対 ${m.opponent}`;
       itemLabel.appendChild(cb);
       itemLabel.appendChild(span);
-      list.appendChild(itemLabel);
+
+      // チェックを入れてダッシュボード全体を読み込まなくても、
+      // このアイコンを押すだけですぐその試合のサマリー画像が見られる。
+      const summaryIconBtn = document.createElement('button');
+      summaryIconBtn.type = 'button';
+      summaryIconBtn.className = 'match-summary-icon-btn';
+      summaryIconBtn.title = 'この試合のサマリーを1枚で見る';
+      summaryIconBtn.setAttribute('aria-label', 'この試合のサマリーを1枚で見る');
+      summaryIconBtn.textContent = '🖼';
+      summaryIconBtn.addEventListener('click', () => openMatchSummaryForEntry(m));
+
+      row.appendChild(itemLabel);
+      row.appendChild(summaryIconBtn);
+      list.appendChild(row);
     });
   });
   updateMatchListToggleLabel();
@@ -2922,7 +2993,341 @@ function showSingleMatch(data, entries, dataList) {
     document.getElementById('leaderboardLabel').textContent = '選手ランキング（この試合）';
     document.getElementById('leaderboardBody').innerHTML = playerLeaderboardHtml(DATA.total || []);
   }
+  // サマリー画像ボタンは「1試合だけを選んでいる」ときだけ表示する
+  // （複数試合の合算では「その試合の」サマリーという意味が成り立たないため）。
+  document.getElementById('summaryBtn').style.display = combined ? 'none' : 'inline-flex';
 }
+
+// ==================== 試合サマリー（1枚まとめ画像） ====================
+// 選手・チームのスタッツをLINEなどでそのまま共有できる、1枚の画像を <canvas> に直接描画する。
+// 外部ライブラリ（html2canvas等）には頼らず自前で描く方式にしている
+// （体育館などネット環境が不安定な場所でも、外部CDNの読み込み待ちや失敗なしに確実に保存できるように）。
+// 色はダーク/ライトモードの影響を受けないよう、CSS変数を使わずすべて直接指定している。
+function summaryRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function summaryEllipsize(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let s = text;
+  while (s.length > 1 && ctx.measureText(s + '…').width > maxWidth) {
+    s = s.slice(0, -1);
+  }
+  return s + '…';
+}
+
+function summarySetScoreLabels(scoreProgression) {
+  return (scoreProgression.bySet || []).map(s => {
+    const last = s.points[s.points.length - 1];
+    if (!last) return null;
+    return { label: `${last.own}-${last.opponent}`, win: last.own > last.opponent };
+  }).filter(Boolean);
+}
+
+function summaryTeamTiles(data) {
+  const t = data.team.total;
+  const sob = data.sideOutBreak.total;
+  return [
+    { k: 'スパイク決定率', v: pct(t.kill_rate), sub: `${t.attempts}本中${t.points}本決定` },
+    { k: 'サーブ効果率', v: pct(t.serve_efficiency), sub: `${t.serve_attempts}本中${t.serve_aces + t.serve_half_credit}本` },
+    { k: 'レシーブAB率', v: pct(t.receive_ab_rate), sub: `${t.receive_attempts}本中${t.receive_a + t.receive_b}本` },
+    { k: 'ブロック得点', v: `${t.block_points}本`, sub: `被ブロック${t.blocked}本` },
+    { k: 'サイドアウト率', v: pct(sob.side_out_rate), sub: `レシーブ${sob.receive_total}本` },
+    { k: 'ブレイク率', v: pct(sob.break_rate), sub: `サーブ${sob.serve_total}本` },
+  ];
+}
+
+function summaryPlayerRows(data) {
+  return (data.total || [])
+    .filter(p => (p.attempts || 0) + (p.serve_attempts || 0) + (p.receive_attempts || 0) + (p.block_attempts || 0) > 0)
+    .sort((a, b) => a.number - b.number);
+}
+
+// data(試合1件分のJSON)から、共有用の1枚画像を<canvas>に描いて返す。
+function drawMatchSummaryCanvas(canvas, data) {
+  const W = 720;
+  const PAD = 26;
+  const SCALE = 2; // 保存した画像がぼやけないよう、2倍の解像度で描く
+
+  const result = computeSetScoreSummary(data.scoreProgression);
+  const setScores = summarySetScoreLabels(data.scoreProgression);
+  const tiles = summaryTeamTiles(data);
+  const players = summaryPlayerRows(data);
+
+  // --- 高さを先に計算する ---
+  const headerTopH = 92;   // eyebrow + 対戦相手名 + 日付
+  const headerResultH = 58; // 勝敗バッジ + セットスコア行
+  const headerH = headerTopH + headerResultH;
+  const bodyTop = headerH + 26;
+  const tileRowH = 62, tileGap = 10;
+  const tileRows = Math.ceil(tiles.length / 3);
+  const tilesH = tileRows * tileRowH + (tileRows - 1) * tileGap;
+  const tableTop = bodyTop + 20 + tilesH + 30 + 20;
+  const rowH = 36, headRowH = 26;
+  const tableBodyH = Math.max(players.length, 1) * rowH;
+  const footH = 40;
+  const H = tableTop + headRowH + tableBodyH + footH;
+
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
+  canvas.style.width = W + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '13px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+
+  // 背景
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  // ヘッダー（グラデーション帯）
+  const grad = ctx.createLinearGradient(0, 0, W, headerH);
+  grad.addColorStop(0, '#16357a');
+  grad.addColorStop(1, '#1d5fc4');
+  summaryRoundRect(ctx, 0, 0, W, headerH, 10);
+  ctx.save(); ctx.clip();
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, headerH);
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '600 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  ctx.fillText(`${data.teamLabel}　試合サマリー`, PAD, 36);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 25px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  ctx.fillText(summaryEllipsize(ctx, `対 ${data.opponent}`, W - PAD * 2), PAD, 66);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = '13px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  ctx.fillText(formatMatchDate(data.matchDate), PAD, 86);
+
+  // 勝敗バッジ
+  const badgeText = `${result.setsWon}勝${result.setsLost}敗`;
+  ctx.font = '800 19px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  const badgeTextW = ctx.measureText(badgeText).width;
+  const badgeW = badgeTextW + 32, badgeH = 32, badgeY = headerTopH + 8;
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  summaryRoundRect(ctx, PAD, badgeY, badgeW, badgeH, badgeH / 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(badgeText, PAD + 16, badgeY + badgeH / 2 + 1);
+  ctx.textBaseline = 'alphabetic';
+
+  // セットごとのスコア（勝ったセットは白背景で強調）
+  let sx = PAD + badgeW + 12;
+  const pillY = badgeY, pillH = badgeH;
+  ctx.font = '700 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  setScores.forEach(s => {
+    const tw = ctx.measureText(s.label).width;
+    const pw = tw + 16;
+    if (sx + pw > W - PAD) return; // 万一入りきらない場合は打ち切り（通常5セット程度なら収まる）
+    ctx.fillStyle = s.win ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.14)';
+    summaryRoundRect(ctx, sx, pillY + (pillH - 24) / 2, pw, 24, 6);
+    ctx.fill();
+    ctx.fillStyle = s.win ? '#16357a' : '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(s.label, sx + 8, pillY + pillH / 2 + 1);
+    ctx.textBaseline = 'alphabetic';
+    sx += pw + 8;
+  });
+
+  // 本体の枠線
+  ctx.strokeStyle = '#e4e4e0';
+  ctx.lineWidth = 1;
+  summaryRoundRect(ctx, 0.5, headerH + 0.5, W - 1, H - headerH - 1, 10);
+  ctx.stroke();
+
+  // セクション見出し
+  function sectionTitle(text, y) {
+    ctx.fillStyle = '#8a93a3';
+    ctx.font = '700 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+    ctx.fillText(text, PAD, y);
+  }
+  sectionTitle('チームスタッツ（全セット合計）', bodyTop);
+
+  // チームスタッツ タイル
+  const tileW = (W - PAD * 2 - tileGap * 2) / 3;
+  tiles.forEach((tl, i) => {
+    const col = i % 3, row = Math.floor(i / 3);
+    const tx = PAD + col * (tileW + tileGap);
+    const ty = bodyTop + 14 + row * (tileRowH + tileGap);
+    ctx.fillStyle = '#f6f7fa';
+    ctx.strokeStyle = '#e4e4e0';
+    summaryRoundRect(ctx, tx, ty, tileW, tileRowH, 8);
+    ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '11px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+    ctx.fillText(summaryEllipsize(ctx, tl.k, tileW - 16), tx + 10, ty + 20);
+
+    ctx.fillStyle = '#16357a';
+    ctx.font = '800 18px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+    ctx.fillText(tl.v, tx + 10, ty + 42);
+
+    ctx.fillStyle = '#9aa1ae';
+    ctx.font = '10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+    ctx.fillText(summaryEllipsize(ctx, tl.sub, tileW - 16), tx + 10, ty + 55);
+  });
+
+  const playerSectionY = bodyTop + 14 + tilesH + 30;
+  sectionTitle('選手別スタッツ', playerSectionY);
+
+  // 選手テーブル
+  const cols = [
+    { key: 'num', label: '', x: PAD, w: 28, align: 'left' },
+    { key: 'name', label: '選手', x: PAD + 28, w: 78, align: 'left' },
+    { key: 'spike', label: 'スパイク', x: 0, w: 0, align: 'center' },
+    { key: 'serve', label: 'サーブ', x: 0, w: 0, align: 'center' },
+    { key: 'receive', label: 'レシーブ', x: 0, w: 0, align: 'center' },
+    { key: 'block', label: 'ブロック', x: 0, w: 0, align: 'center' },
+  ];
+  const fixedW = 28 + 78;
+  const flexW = (W - PAD * 2 - fixedW) / 4;
+  let cx = PAD + fixedW;
+  for (let i = 2; i < cols.length; i++) { cols[i].x = cx; cols[i].w = flexW; cx += flexW; }
+
+  const theadY = tableTop;
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '700 10.5px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  cols.forEach(c => {
+    if (!c.label) return;
+    const textW = ctx.measureText(c.label).width;
+    const tx = c.align === 'left' ? c.x : c.x + c.w / 2 - textW / 2;
+    ctx.fillText(c.label, tx, theadY + headRowH - 9);
+  });
+  ctx.strokeStyle = '#e4e4e0';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(PAD, theadY + headRowH);
+  ctx.lineTo(W - PAD, theadY + headRowH);
+  ctx.stroke();
+
+  if (!players.length) {
+    ctx.fillStyle = '#9aa1ae';
+    ctx.font = '13px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+    ctx.fillText('出場記録がありません。', PAD, theadY + headRowH + 22);
+  }
+
+  players.forEach((p, i) => {
+    const ry = theadY + headRowH + i * rowH;
+    if (i % 2 === 1) {
+      ctx.fillStyle = '#f9fafc';
+      ctx.fillRect(PAD, ry, W - PAD * 2, rowH);
+    }
+    ctx.strokeStyle = '#eef0f3';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD, ry + rowH);
+    ctx.lineTo(W - PAD, ry + rowH);
+    ctx.stroke();
+
+    const midY = ry + 16, subY = ry + 29;
+    ctx.fillStyle = '#9aa1ae';
+    ctx.font = '700 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+    ctx.fillText(String(p.number), cols[0].x, midY + 4);
+
+    ctx.fillStyle = '#1b2333';
+    ctx.font = '700 13px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+    ctx.fillText(summaryEllipsize(ctx, p.name, cols[1].w), cols[1].x, midY + 4);
+
+    function cell(col, main, sub) {
+      ctx.fillStyle = '#1b2333';
+      ctx.font = '700 12.5px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+      let tw = ctx.measureText(main).width;
+      ctx.fillText(main, col.x + col.w / 2 - tw / 2, midY + 4);
+      if (sub) {
+        ctx.fillStyle = '#9aa1ae';
+        ctx.font = '10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+        tw = ctx.measureText(sub).width;
+        ctx.fillText(sub, col.x + col.w / 2 - tw / 2, subY + 4);
+      }
+    }
+    cell(cols[2], `${p.attempts}-${p.points}`, `決定率${pct(p.kill_rate)}`);
+    cell(cols[3], `${p.serve_attempts}本`, `効果率${pct(p.serve_efficiency)}`);
+    cell(cols[4], `${p.receive_attempts}本`, `AB率${pct(p.receive_ab_rate)}`);
+    cell(cols[5], `${p.block_points}本`, '');
+  });
+
+  // フッター
+  ctx.fillStyle = '#9aa1ae';
+  ctx.font = '10.5px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+  const footText = `${data.teamLabel}　スタッツ分析ツール`;
+  const footW = ctx.measureText(footText).width;
+  ctx.fillText(footText, W / 2 - footW / 2, H - 16);
+}
+
+let summaryImageDataUrl = null;
+let summaryData = null; // 今モーダルに表示している試合のデータ（メイン画面のDATAとは独立）
+
+// data(その試合のJSON)をもとにモーダルを開いて描画する。
+// メイン画面でその試合を選んでいなくても、試合一覧のアイコンから直接呼べるようにしている。
+function openMatchSummaryWithData(data) {
+  summaryData = data;
+  document.getElementById('summaryOverlay').style.display = 'flex';
+  const img = document.getElementById('summaryImg');
+  const loading = document.getElementById('summaryLoading');
+  img.style.display = 'none';
+  loading.style.display = 'block';
+  // 画面には<canvas>ではなく<img>として表示する。iPhoneのSafariなど、
+  // canvas要素は長押しで保存できない環境でも、img要素なら長押しで保存できるため。
+  const canvas = document.createElement('canvas');
+  const draw = () => {
+    if (summaryData !== data) return; // 描画中に別の試合が選ばれていたら古い結果は捨てる
+    drawMatchSummaryCanvas(canvas, data);
+    summaryImageDataUrl = canvas.toDataURL('image/png');
+    img.src = summaryImageDataUrl;
+    loading.style.display = 'none';
+    img.style.display = 'inline-block';
+  };
+  // フォントの読み込みを待ってから描くと、初回表示でも文字化けやガタつきが起きにくい
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(draw).catch(draw);
+  } else {
+    draw();
+  }
+}
+
+// メイン画面で今表示している試合（DATA）のサマリーを開く
+function openMatchSummary() {
+  if (!DATA) return;
+  openMatchSummaryWithData(DATA);
+}
+
+// 試合一覧のアイコンから、その場でその試合のサマリーを開く
+// （チェックを入れてダッシュボード全体を読み込まなくても済むようにするため）
+function openMatchSummaryForEntry(entry) {
+  fetchMatchData(entry).then(data => openMatchSummaryWithData(data));
+}
+
+function closeMatchSummary() {
+  document.getElementById('summaryOverlay').style.display = 'none';
+}
+
+function saveMatchSummaryImage() {
+  if (!summaryImageDataUrl || !summaryData) return;
+  const dateLabel = (summaryData.matchDate || '').replace(/[^0-9]/g, '') || 'match';
+  const link = document.createElement('a');
+  link.download = `${dateLabel}_${summaryData.opponent}_サマリー.png`;
+  link.href = summaryImageDataUrl;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+document.getElementById('summaryBtn').addEventListener('click', openMatchSummary);
+document.getElementById('summaryCloseBtn').addEventListener('click', closeMatchSummary);
+document.getElementById('summarySaveBtn').addEventListener('click', saveMatchSummaryImage);
+document.getElementById('summaryOverlay').addEventListener('click', (e) => {
+  if (e.target.id === 'summaryOverlay') closeMatchSummary();
+});
 
 // ==================== 選手ランキング（規定本数以上の選手が対象） ====================
 function playerLeaderboardHtml(players) {
