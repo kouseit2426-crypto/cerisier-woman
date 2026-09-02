@@ -1750,7 +1750,7 @@ function renderTechSection(tech, headerElId, tilesElId, bodyElId, totalStats, se
     <div class="stat-tile"><div class="k">打数</div><div class="v">${attempts}</div></div>
     <div class="stat-tile"><div class="k">得点</div><div class="v">${points}</div></div>
     <div class="stat-tile"><div class="k">ミス</div><div class="v">${errors}</div></div>
-    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pctCount(killRate, points, attempts)}</div></div>
+    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(killRate)}</div></div>
   `;
 
   document.getElementById(headerElId).textContent = hasMatchLabels ? '試合' : 'セット';
@@ -1790,7 +1790,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
     <div class="stat-tile"><div class="k">得点</div><div class="v">${totalStats.points}</div></div>
     <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.errors}</div></div>
     <div class="stat-tile"><div class="k">被ブロック</div><div class="v">${totalStats.blocked}</div></div>
-    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pctCount(totalStats.kill_rate, totalStats.points, totalStats.attempts)}</div></div>
+    <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(totalStats.kill_rate)}</div></div>
     <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.efficiency)}</div></div>
   `;
 
@@ -1803,7 +1803,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
     if (sp && sp.attempts > 0) {
       const tr = document.createElement('tr');
       const rowLabel = sp.matchLabel ? escapeHtml(sp.matchLabel) : `第${sp.setNumber}セット`;
-      tr.innerHTML = `<td>${rowLabel}</td><td>${sp.attempts}</td><td>${sp.points}</td><td>${sp.errors}</td><td>${sp.blocked}</td><td>${pct(sp.kill_rate)}</td><td>${pct(sp.efficiency)}</td>`;
+      tr.innerHTML = `<td>${rowLabel}</td><td>${sp.attempts}</td><td>${sp.points}</td><td>${sp.errors}</td><td>${sp.blocked}</td><td>${pct(sp.kill_rate)}</td>`;
       setBody.appendChild(tr);
     }
   });
@@ -1856,9 +1856,9 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
       <div class="stat-tile"><div class="k">エース</div><div class="v">${totalStats.serve_aces}</div></div>
       <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.serve_errors}</div></div>
       <div class="stat-tile"><div class="k">効果本数</div><div class="v">${totalStats.serve_half_credit}<div style="font-size:11px;color:var(--text-muted);font-weight:400">＋と／の合計</div></div></div>
-      <div class="stat-tile"><div class="k">エース率</div><div class="v">${pctCount(totalStats.serve_ace_rate, totalStats.serve_aces, totalStats.serve_attempts)}</div></div>
-      <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pctCount(totalStats.serve_error_rate, totalStats.serve_errors, totalStats.serve_attempts)}</div></div>
-      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pctCount(totalStats.serve_efficiency, totalStats.serve_aces + totalStats.serve_half_credit, totalStats.serve_attempts)}</div></div>
+      <div class="stat-tile"><div class="k">エース率</div><div class="v">${pct(totalStats.serve_ace_rate)}</div></div>
+      <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pct(totalStats.serve_error_rate)}</div></div>
+      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(totalStats.serve_efficiency)}</div></div>
     `;
   } else {
     serveSectionWrap.style.display = 'none';
@@ -1875,9 +1875,9 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
       <div class="stat-tile"><div class="k">Cパス</div><div class="v">${totalStats.receive_c}</div></div>
       <div class="stat-tile"><div class="k">Dパス</div><div class="v">${totalStats.receive_d}</div></div>
       <div class="stat-tile"><div class="k">ミス</div><div class="v">${totalStats.receive_errors}</div></div>
-      <div class="stat-tile"><div class="k">返球率</div><div class="v">${pctCount(totalStats.receive_return_rate, totalStats.receive_attempts - totalStats.receive_errors, totalStats.receive_attempts)}</div></div>
-      <div class="stat-tile"><div class="k">A率</div><div class="v">${pctCount(totalStats.receive_a_rate, totalStats.receive_a, totalStats.receive_attempts)}</div></div>
-      <div class="stat-tile"><div class="k">AB率</div><div class="v">${pctCount(totalStats.receive_ab_rate, totalStats.receive_a + totalStats.receive_b, totalStats.receive_attempts)}</div></div>
+      <div class="stat-tile"><div class="k">返球率</div><div class="v">${pct(totalStats.receive_return_rate)}</div></div>
+      <div class="stat-tile"><div class="k">A率</div><div class="v">${pct(totalStats.receive_a_rate)}</div></div>
+      <div class="stat-tile"><div class="k">AB率</div><div class="v">${pct(totalStats.receive_ab_rate)}</div></div>
     `;
   } else {
     receiveSectionWrap.style.display = 'none';
@@ -3385,9 +3385,33 @@ function drawMatchSummaryCanvas(canvas, data, setIndex) {
         ctx.fillText(sub, col.x + col.w / 2 - tw / 2, subY + 4);
       }
     }
-    cell(cols[2], `${p.attempts}-${p.points}`, `決定率${pct(p.kill_rate)}`);
-    cell(cols[3], `${p.serve_attempts}本`, `効果率${pct(p.serve_efficiency)}`);
-    cell(cols[4], `${p.receive_attempts}本`, `AB率${pct(p.receive_ab_rate)}`);
+    // ％【本数】の1行表示（サイトの表と同じ形式）。mainは太字、bracketは小さいグレー文字。
+    function cellRate(col, main, bracket) {
+      ctx.font = '700 12.5px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+      const mainW = ctx.measureText(main).width;
+      let bracketW = 0;
+      if (bracket) {
+        ctx.font = '10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+        bracketW = ctx.measureText(bracket).width;
+      }
+      const gap = bracket ? 3 : 0;
+      let x = col.x + col.w / 2 - (mainW + gap + bracketW) / 2;
+      ctx.fillStyle = '#1b2333';
+      ctx.font = '700 12.5px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+      ctx.fillText(main, x, midY + 4);
+      if (bracket) {
+        x += mainW + gap;
+        ctx.fillStyle = '#9aa1ae';
+        ctx.font = '10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+        ctx.fillText(bracket, x, midY + 4);
+      }
+    }
+    const killBracket = p.attempts ? `【${p.points}/${p.attempts}本】` : '';
+    cellRate(cols[2], `決定率${pct(p.kill_rate)}`, killBracket);
+    const serveBracket = p.serve_attempts ? `【${(p.serve_aces || 0) + (p.serve_half_credit || 0)}/${p.serve_attempts}本】` : '';
+    cellRate(cols[3], `効果率${pct(p.serve_efficiency)}`, serveBracket);
+    const receiveBracket = p.receive_attempts ? `【${(p.receive_a || 0) + (p.receive_b || 0)}/${p.receive_attempts}本】` : '';
+    cellRate(cols[4], `AB率${pct(p.receive_ab_rate)}`, receiveBracket);
     cell(cols[5], `${p.block_points}本`, '');
   });
 
