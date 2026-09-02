@@ -304,6 +304,14 @@
   .summary-scroll { max-height: 82vh; overflow-y: auto; border-radius: 8px; text-align: center; background: #f2f2ef; padding: 12px; }
   #summaryImg { max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.12); }
   .summary-hint { margin: -4px 0 12px; font-size: 12px; color: var(--text-muted); text-align: right; }
+  .summary-set-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .summary-set-tab {
+    font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    padding: 6px 13px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--surface-1); color: var(--text-secondary);
+  }
+  .summary-set-tab:hover { background: var(--grid); }
+  .summary-set-tab.active { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
 </style>
 </head>
 <body>
@@ -654,6 +662,7 @@
       <button type="button" class="summary-btn" id="summarySaveBtn">画像として保存</button>
       <button type="button" class="summary-close-btn" id="summaryCloseBtn">✕ 閉じる</button>
     </div>
+    <div class="summary-set-tabs" id="summarySetTabs"></div>
     <p class="summary-hint">保存できない場合は、下の画像を長押しして保存できます</p>
     <div class="summary-scroll">
       <p class="hint" id="summaryLoading">読み込み中…</p>
@@ -3030,35 +3039,58 @@ function summarySetScoreLabels(scoreProgression) {
   }).filter(Boolean);
 }
 
-function summaryTeamTiles(data) {
-  const t = data.team.total;
-  const sob = data.sideOutBreak.total;
+// setIndex が null なら「全セット合計」、数値ならその番号のセット（0始まり）だけの
+// チーム/選手スタッツを取り出す。決定率・AB率などの各種レートはdvPlayerSummary側で
+// 常に計算済みなので、対象を選手全員(total)からそのセットの選手(sets[i].players)に
+// 差し替えるだけで、セットごとの決定率・効果率・AB率などがそのまま出せる。
+function summaryScope(data, setIndex) {
+  if (setIndex === null || setIndex === undefined) {
+    return {
+      label: '全セット合計',
+      team: data.team.total,
+      sideOut: data.sideOutBreak.total,
+      players: data.total || [],
+    };
+  }
+  return {
+    label: `第${setIndex + 1}セット`,
+    team: (data.team.sets || [])[setIndex] || {},
+    sideOut: (data.sideOutBreak.bySet || [])[setIndex] || {},
+    players: ((data.sets || [])[setIndex] || {}).players || [],
+  };
+}
+
+function summaryTeamTiles(scope) {
+  const t = scope.team;
+  const sob = scope.sideOut;
   return [
-    { k: 'スパイク決定率', v: pct(t.kill_rate), sub: `${t.attempts}本中${t.points}本決定` },
-    { k: 'サーブ効果率', v: pct(t.serve_efficiency), sub: `${t.serve_attempts}本中${t.serve_aces + t.serve_half_credit}本` },
-    { k: 'レシーブAB率', v: pct(t.receive_ab_rate), sub: `${t.receive_attempts}本中${t.receive_a + t.receive_b}本` },
-    { k: 'ブロック得点', v: `${t.block_points}本`, sub: `被ブロック${t.blocked}本` },
-    { k: 'サイドアウト率', v: pct(sob.side_out_rate), sub: `レシーブ${sob.receive_total}本` },
-    { k: 'ブレイク率', v: pct(sob.break_rate), sub: `サーブ${sob.serve_total}本` },
+    { k: 'スパイク決定率', v: pct(t.kill_rate), sub: `${t.attempts || 0}本中${t.points || 0}本決定` },
+    { k: 'サーブ効果率', v: pct(t.serve_efficiency), sub: `${t.serve_attempts || 0}本中${(t.serve_aces || 0) + (t.serve_half_credit || 0)}本` },
+    { k: 'レシーブAB率', v: pct(t.receive_ab_rate), sub: `${t.receive_attempts || 0}本中${(t.receive_a || 0) + (t.receive_b || 0)}本` },
+    { k: 'ブロック得点', v: `${t.block_points || 0}本`, sub: `被ブロック${t.blocked || 0}本` },
+    { k: 'サイドアウト率', v: pct(sob.side_out_rate), sub: `レシーブ${sob.receive_total || 0}本` },
+    { k: 'ブレイク率', v: pct(sob.break_rate), sub: `サーブ${sob.serve_total || 0}本` },
   ];
 }
 
-function summaryPlayerRows(data) {
-  return (data.total || [])
+function summaryPlayerRows(scope) {
+  return (scope.players || [])
     .filter(p => (p.attempts || 0) + (p.serve_attempts || 0) + (p.receive_attempts || 0) + (p.block_attempts || 0) > 0)
     .sort((a, b) => a.number - b.number);
 }
 
 // data(試合1件分のJSON)から、共有用の1枚画像を<canvas>に描いて返す。
-function drawMatchSummaryCanvas(canvas, data) {
+// setIndex が null なら全セット合計、数値ならそのセット（0始まり）だけを表示する。
+function drawMatchSummaryCanvas(canvas, data, setIndex) {
   const W = 720;
   const PAD = 26;
   const SCALE = 2; // 保存した画像がぼやけないよう、2倍の解像度で描く
 
   const result = computeSetScoreSummary(data.scoreProgression);
   const setScores = summarySetScoreLabels(data.scoreProgression);
-  const tiles = summaryTeamTiles(data);
-  const players = summaryPlayerRows(data);
+  const scope = summaryScope(data, setIndex);
+  const tiles = summaryTeamTiles(scope);
+  const players = summaryPlayerRows(scope);
 
   // --- 高さを先に計算する ---
   const headerTopH = 92;   // eyebrow + 対戦相手名 + 日付
@@ -3121,17 +3153,24 @@ function drawMatchSummaryCanvas(canvas, data) {
   ctx.fillText(badgeText, PAD + 16, badgeY + badgeH / 2 + 1);
   ctx.textBaseline = 'alphabetic';
 
-  // セットごとのスコア（勝ったセットは白背景で強調）
+  // セットごとのスコア（勝ったセットは白背景で強調。今表示中のセットには白い枠を付ける）
   let sx = PAD + badgeW + 12;
   const pillY = badgeY, pillH = badgeH;
   ctx.font = '700 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
-  setScores.forEach(s => {
+  setScores.forEach((s, i) => {
     const tw = ctx.measureText(s.label).width;
     const pw = tw + 16;
     if (sx + pw > W - PAD) return; // 万一入りきらない場合は打ち切り（通常5セット程度なら収まる）
+    const py = pillY + (pillH - 24) / 2;
     ctx.fillStyle = s.win ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.14)';
-    summaryRoundRect(ctx, sx, pillY + (pillH - 24) / 2, pw, 24, 6);
+    summaryRoundRect(ctx, sx, py, pw, 24, 6);
     ctx.fill();
+    if (i === setIndex) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      summaryRoundRect(ctx, sx + 1, py + 1, pw - 2, 22, 5);
+      ctx.stroke();
+    }
     ctx.fillStyle = s.win ? '#16357a' : '#ffffff';
     ctx.textBaseline = 'middle';
     ctx.fillText(s.label, sx + 8, pillY + pillH / 2 + 1);
@@ -3151,7 +3190,7 @@ function drawMatchSummaryCanvas(canvas, data) {
     ctx.font = '700 12px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
     ctx.fillText(text, PAD, y);
   }
-  sectionTitle('チームスタッツ（全セット合計）', bodyTop);
+  sectionTitle(`チームスタッツ（${scope.label}）`, bodyTop);
 
   // チームスタッツ タイル
   const tileW = (W - PAD * 2 - tileGap * 2) / 3;
@@ -3178,7 +3217,7 @@ function drawMatchSummaryCanvas(canvas, data) {
   });
 
   const playerSectionY = bodyTop + 14 + tilesH + 30;
-  sectionTitle('選手別スタッツ', playerSectionY);
+  sectionTitle(`選手別スタッツ（${scope.label}）`, playerSectionY);
 
   // 選手テーブル
   const cols = [
@@ -3266,23 +3305,45 @@ function drawMatchSummaryCanvas(canvas, data) {
 
 let summaryImageDataUrl = null;
 let summaryData = null; // 今モーダルに表示している試合のデータ（メイン画面のDATAとは独立）
+let summarySetIndex = null; // null=全セット合計、0以上ならそのセット（0始まり）
+const summaryCanvasEl = document.createElement('canvas'); // 画面には出さず、描画専用に使う
 
-// data(その試合のJSON)をもとにモーダルを開いて描画する。
-// メイン画面でその試合を選んでいなくても、試合一覧のアイコンから直接呼べるようにしている。
-function openMatchSummaryWithData(data) {
-  summaryData = data;
-  document.getElementById('summaryOverlay').style.display = 'flex';
+// 「全セット」「第1セット」…のタブを、今の試合のセット数に合わせて作り直す
+function renderSummarySetTabs(data) {
+  const wrap = document.getElementById('summarySetTabs');
+  wrap.innerHTML = '';
+  const setCount = (data.scoreProgression.bySet || []).length;
+  const options = [{ index: null, label: '全セット' }];
+  for (let i = 0; i < setCount; i++) options.push({ index: i, label: `第${i + 1}セット` });
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'summary-set-tab' + (summarySetIndex === opt.index ? ' active' : '');
+    btn.textContent = opt.label;
+    btn.addEventListener('click', () => {
+      if (summarySetIndex === opt.index) return;
+      summarySetIndex = opt.index;
+      renderSummarySetTabs(data);
+      renderSummaryImage();
+    });
+    wrap.appendChild(btn);
+  });
+}
+
+// 今の summaryData / summarySetIndex の組み合わせで画像を描き直す
+function renderSummaryImage() {
+  const data = summaryData;
+  if (!data) return;
   const img = document.getElementById('summaryImg');
   const loading = document.getElementById('summaryLoading');
   img.style.display = 'none';
   loading.style.display = 'block';
-  // 画面には<canvas>ではなく<img>として表示する。iPhoneのSafariなど、
-  // canvas要素は長押しで保存できない環境でも、img要素なら長押しで保存できるため。
-  const canvas = document.createElement('canvas');
+  const setIndexAtDrawTime = summarySetIndex;
   const draw = () => {
-    if (summaryData !== data) return; // 描画中に別の試合が選ばれていたら古い結果は捨てる
-    drawMatchSummaryCanvas(canvas, data);
-    summaryImageDataUrl = canvas.toDataURL('image/png');
+    // 描画中に別の試合・別のセットが選ばれていたら、古い結果は捨てて何もしない
+    if (summaryData !== data || summarySetIndex !== setIndexAtDrawTime) return;
+    drawMatchSummaryCanvas(summaryCanvasEl, data, setIndexAtDrawTime);
+    summaryImageDataUrl = summaryCanvasEl.toDataURL('image/png');
     img.src = summaryImageDataUrl;
     loading.style.display = 'none';
     img.style.display = 'inline-block';
@@ -3293,6 +3354,16 @@ function openMatchSummaryWithData(data) {
   } else {
     draw();
   }
+}
+
+// data(その試合のJSON)をもとにモーダルを開いて描画する。
+// メイン画面でその試合を選んでいなくても、試合一覧のアイコンから直接呼べるようにしている。
+function openMatchSummaryWithData(data) {
+  summaryData = data;
+  summarySetIndex = null; // 開くたびに「全セット」から始める
+  document.getElementById('summaryOverlay').style.display = 'flex';
+  renderSummarySetTabs(data);
+  renderSummaryImage();
 }
 
 // メイン画面で今表示している試合（DATA）のサマリーを開く
@@ -3314,8 +3385,9 @@ function closeMatchSummary() {
 function saveMatchSummaryImage() {
   if (!summaryImageDataUrl || !summaryData) return;
   const dateLabel = (summaryData.matchDate || '').replace(/[^0-9]/g, '') || 'match';
+  const setLabel = summarySetIndex === null ? '' : `_第${summarySetIndex + 1}セット`;
   const link = document.createElement('a');
-  link.download = `${dateLabel}_${summaryData.opponent}_サマリー.png`;
+  link.download = `${dateLabel}_${summaryData.opponent}${setLabel}_サマリー.png`;
   link.href = summaryImageDataUrl;
   document.body.appendChild(link);
   link.click();
