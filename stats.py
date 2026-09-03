@@ -349,6 +349,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .stat-tile .k { font-size: 11.5px; color: var(--text-muted); margin-bottom: 4px; }
   .stat-tile .v { font-size: 20px; font-variant-numeric: tabular-nums; }
   .pct-count { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 3px; white-space: nowrap; }
+  .pct-count-block { font-size: 11px; font-weight: 400; color: var(--text-muted); margin-top: 2px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
@@ -1665,6 +1666,13 @@ function pctCount(v, num, den, unit) {
   unit = unit === undefined ? '本' : unit;
   const countText = (den || den === 0) ? `${num}/${den}${unit}` : `${num}${unit}`;
   return `${pct(v)}<span class="pct-count">【${countText}】</span>`;
+}
+
+// pctCountと同じだが、「【本数/分母】」を％の下に改行して表示する（選手ランキングなど、横幅が狭い表向け）
+function pctCountBlock(v, num, den, unit) {
+  unit = unit === undefined ? '本' : unit;
+  const countText = (den || den === 0) ? `${num}/${den}${unit}` : `${num}${unit}`;
+  return `${pct(v)}<div class="pct-count-block">【${countText}】</div>`;
 }
 
 function renderTeamGrid() {
@@ -3533,7 +3541,7 @@ function playerLeaderboardHtml(players) {
   function rowsHtml(list, key, numGetter, denKey) {
     if (!list.length) return '<p class="hint">規定本数（' + MIN_ATTEMPTS + '本）以上の選手がいません。</p>';
     return '<table class="rotation-table"><thead><tr><th>順位</th><th>選手</th><th>値</th></tr></thead><tbody>'
-      + list.map((p, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${pctCount(p[key], numGetter(p), p[denKey])}</td></tr>`).join('')
+      + list.map((p, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(p.name)}</td><td>${pctCountBlock(p[key], numGetter(p), p[denKey])}</td></tr>`).join('')
       + '</tbody></table>';
   }
   const byKill = topList(players, 'kill_rate', 'attempts');
