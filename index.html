@@ -648,6 +648,14 @@
           強打＝しっかり打ち込んだ攻撃、フェイント＝相手コートへ軽く落とす攻撃です。
         </p>
         <div id="attackTechniqueBody"></div>
+        <h4 style="margin:16px 0 8px;font-size:14px">相手が決めた攻撃のコース（％）</h4>
+        <p class="hint" style="margin-top:-4px">
+          相手が得点した攻撃だけを、コンビの分類でレフト／ミドル／ライト／バックアタックに分けています。
+          実際の着地位置ではなく、コースの分類ごとの代表的な位置に矢印を表示した簡易図です。
+        </p>
+        <div class="player-grid" id="opponentCourseFilterButtons" style="margin-bottom:10px"></div>
+        <div id="opponentCourseBody"></div>
+        <div id="opponentCourseDiagram" style="margin-top:12px"></div>
         <div id="rotationTables" style="margin-top:16px"></div>
       </div>
     </div>
@@ -1386,6 +1394,9 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
   // 相手チーム自身のローテーション番号でのサイドアウト率・ブレイク率が計算できる
   const opponentMarker = ownMarker === '*' ? 'a' : '*';
   const allOppSideOutBreakByRotation = setsLines.map(s => dvAnalyzeSideOutBreakByRotation(s, opponentMarker));
+  // 相手が決めた攻撃のコース（レフト/ミドル/ライト）用：同じくownとoppを入れ替えるだけで、
+  // 相手自身のコンビ分類の攻撃タイプ内訳が計算できる（2026-09-03追加）
+  const allOppRotationStats = setsLines.map(s => dvAnalyzeRotationAttacks(s, opponentMarker, comboCategories));
   const allPlayerRotationAttacks = setsLines.map(s => dvAnalyzePlayerRotationAttacks(s, ownMarker));
   const allScoreProgression = setsLines.map(s => dvAnalyzeScoreProgression(s, ownMarker));
   const allStartingLineups = setsLines.map(s => dvGetStartingLineup(s, ownMarker));
@@ -1433,6 +1444,10 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
         for (let n = 1; n <= 6; n++) rows.push({ rotation: n, ...dvSideOutBreakSummary(merged[n]) });
         return rows;
       })(),
+    },
+    opponentRotation: {
+      bySet: allOppRotationStats.map((rs, i) => ({ setNumber: i + 1, rows: dvRotationSummary(rs) })),
+      total: { rows: dvRotationSummary(dvMergeRotationStats(allOppRotationStats)) },
     },
     scoreProgression: {
       bySet: allScoreProgression.map((points, i) => ({
@@ -2414,7 +2429,91 @@ function attackTechniqueHtml(totalRow) {
   return html;
 }
 
-function selectRotationSet(rows, chipEl) {
+// 相手が決めた攻撃（アタックで得点したものだけ）のコース内訳（レフト/ミドル/ライト/バックアタック/その他）
+// トス配分・打法別と違い、分母は「打数」ではなく「相手が決めた本数」（2026-09-03追加）。
+function opponentCourseHtml(totalRow) {
+  if (!totalRow || !totalRow.points) return '<p class="hint">相手の決定データがありません。</p>';
+  let html = '<div class="stat-tiles">';
+  CATEGORY_ORDER.forEach(cat => {
+    const c = totalRow.categories[cat];
+    const share = totalRow.points ? c.points / totalRow.points : null;
+    html += `<div class="stat-tile"><div class="k">${CATEGORY_LABELS[cat]}</div><div class="v">${pctCount(share, c.points, totalRow.points)}</div></div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+// 相手が決めたコースをコート図（矢印）で見せる簡易版（2026-09-04追加）。
+// 1本ごとの正確な着地位置ではなく、レフト／ミドル／ライト／バックアタックそれぞれの
+// 「代表的な位置」に矢印を引き、本数・割合をラベルとして添える。
+// 「全体」＝4方向まとめて表示、コース名を選ぶとそのコースだけを表示する。
+const OPPONENT_COURSE_FILTER_OPTIONS = [
+  ['all', '全体'], ['left', 'レフト'], ['middle', 'ミドル'], ['right', 'ライト'], ['pipe', 'バックアタック'],
+];
+const OPPONENT_COURSE_POINTS = {
+  left: { x: 45, y: 175 },
+  middle: { x: 100, y: 245 },
+  right: { x: 155, y: 175 },
+  pipe: { x: 100, y: 120 },
+};
+let CURRENT_OPP_COURSE_ROW = null;
+let CURRENT_OPP_COURSE_FILTER = 'all';
+
+function opponentCourseDiagramSvg(totalRow, filterCat) {
+  if (!totalRow || !totalRow.points) return '';
+  const catsToShow = filterCat === 'all' ? ['left', 'right', 'middle', 'pipe'] : [filterCat];
+  const originX = 100, originY = 70;
+  let arrows = '';
+  catsToShow.forEach(cat => {
+    const c = totalRow.categories[cat];
+    const pt = OPPONENT_COURSE_POINTS[cat];
+    if (!pt || !c) return;
+    const pct = totalRow.points ? Math.round((c.points / totalRow.points) * 1000) / 10 : 0;
+    arrows += `
+      <line x1="${originX}" y1="${originY}" x2="${pt.x}" y2="${pt.y}" stroke="var(--series-blue)" stroke-width="1.6" stroke-dasharray="3,3" />
+      <circle cx="${pt.x}" cy="${pt.y}" r="5" fill="var(--series-blue)" />
+      <text x="${pt.x}" y="${pt.y - 11}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text-primary)">${CATEGORY_LABELS[cat]}</text>
+      <text x="${pt.x}" y="${pt.y + 19}" text-anchor="middle" font-size="10" fill="var(--text-secondary)">${c.points}本（${pct}%）</text>`;
+  });
+  return `
+    <svg viewBox="0 0 200 300" style="width:100%;max-width:260px;display:block;margin:0 auto" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="20" width="180" height="270" fill="none" stroke="var(--border)" stroke-width="1.5" />
+      <line x1="70" y1="70" x2="70" y2="290" stroke="var(--grid)" stroke-width="1" stroke-dasharray="2,3" />
+      <line x1="130" y1="70" x2="130" y2="290" stroke="var(--grid)" stroke-width="1" stroke-dasharray="2,3" />
+      <line x1="10" y1="143" x2="190" y2="143" stroke="var(--grid)" stroke-width="1" />
+      <line x1="10" y1="217" x2="190" y2="217" stroke="var(--grid)" stroke-width="1" />
+      <line x1="10" y1="70" x2="190" y2="70" stroke="var(--text-primary)" stroke-width="2.5" />
+      <circle cx="${originX}" cy="${originY}" r="4" fill="#e5484d" />
+      ${arrows}
+    </svg>`;
+}
+
+function setOpponentCourseFilter(key) {
+  CURRENT_OPP_COURSE_FILTER = key;
+  renderOpponentCourseSection(CURRENT_OPP_COURSE_ROW);
+}
+
+function renderOpponentCourseSection(totalRow) {
+  CURRENT_OPP_COURSE_ROW = totalRow;
+  const filterBtnsEl = document.getElementById('opponentCourseFilterButtons');
+  if (filterBtnsEl) {
+    filterBtnsEl.innerHTML = '';
+    OPPONENT_COURSE_FILTER_OPTIONS.forEach(([key, label]) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'player-chip' + (CURRENT_OPP_COURSE_FILTER === key ? ' selected' : '');
+      chip.textContent = label;
+      chip.addEventListener('click', () => setOpponentCourseFilter(key));
+      filterBtnsEl.appendChild(chip);
+    });
+  }
+  const oppCourseBody = document.getElementById('opponentCourseBody');
+  if (oppCourseBody) oppCourseBody.innerHTML = opponentCourseHtml(totalRow);
+  const diagramEl = document.getElementById('opponentCourseDiagram');
+  if (diagramEl) diagramEl.innerHTML = opponentCourseDiagramSvg(totalRow, CURRENT_OPP_COURSE_FILTER);
+}
+
+function selectRotationSet(rows, chipEl, oppRows) {
   document.querySelectorAll('#rotationSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
   chipEl.classList.add('selected');
   document.getElementById('rotationTables').innerHTML = rotationTableHtml(rows);
@@ -2422,6 +2521,10 @@ function selectRotationSet(rows, chipEl) {
   document.getElementById('tossDistributionBody').innerHTML = tossDistributionHtml(totalRow);
   const techBody = document.getElementById('attackTechniqueBody');
   if (techBody) techBody.innerHTML = attackTechniqueHtml(totalRow);
+  const oppTotalRow = (oppRows && oppRows.length)
+    ? (oppRows.find(r => r.rotation === '合計') || oppRows[oppRows.length - 1])
+    : null;
+  renderOpponentCourseSection(oppTotalRow);
 }
 
 function showRotationTables() {
@@ -2430,18 +2533,26 @@ function showRotationTables() {
     'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。セットを選んでください。';
   const btnEl = document.getElementById('rotationSetButtons');
   btnEl.innerHTML = '';
-  const items = DATA.rotation.bySet.map(s => ({ label: `第${s.setNumber}セット`, rows: s.rows }));
-  items.push({ label: '全セット合計', rows: DATA.rotation.total.rows });
+  const items = DATA.rotation.bySet.map((s, i) => ({
+    label: `第${s.setNumber}セット`,
+    rows: s.rows,
+    oppRows: (DATA.opponentRotation && DATA.opponentRotation.bySet[i]) ? DATA.opponentRotation.bySet[i].rows : null,
+  }));
+  items.push({
+    label: '全セット合計',
+    rows: DATA.rotation.total.rows,
+    oppRows: DATA.opponentRotation ? DATA.opponentRotation.total.rows : null,
+  });
   items.forEach((item, idx) => {
     const chip = document.createElement('button');
     chip.className = 'player-chip';
     chip.textContent = item.label;
-    chip.addEventListener('click', () => selectRotationSet(item.rows, chip));
+    chip.addEventListener('click', () => selectRotationSet(item.rows, chip, item.oppRows));
     if (idx === items.length - 1) chip.classList.add('selected');
     btnEl.appendChild(chip);
   });
   const last = items[items.length - 1];
-  selectRotationSet(last.rows, btnEl.children[items.length - 1]);
+  selectRotationSet(last.rows, btnEl.children[items.length - 1], last.oppRows);
 }
 
 // 試合を2つ以上選んでいるとき：試合ごとのボタン＋「全体」（選んだ試合すべての合計）を並べて選べるようにする
@@ -2456,18 +2567,23 @@ function showRotationTablesCombined(entries, dataList) {
   const items = dataList.map(d => ({
     label: `${d.opponent}（${formatMatchDate(d.matchDate)}）`,
     rows: d.rotation.total.rows,
+    oppRows: d.opponentRotation ? d.opponentRotation.total.rows : null,
   }));
-  items.push({ label: '全体', rows: combineRotationRows(dataList.map(d => d.rotation.total.rows)) });
+  items.push({
+    label: '全体',
+    rows: combineRotationRows(dataList.map(d => d.rotation.total.rows)),
+    oppRows: combineRotationRows(dataList.map(d => (d.opponentRotation && d.opponentRotation.total.rows) || [])),
+  });
   items.forEach((item, idx) => {
     const chip = document.createElement('button');
     chip.className = 'player-chip';
     chip.textContent = item.label;
-    chip.addEventListener('click', () => selectRotationSet(item.rows, chip));
+    chip.addEventListener('click', () => selectRotationSet(item.rows, chip, item.oppRows));
     if (idx === items.length - 1) chip.classList.add('selected');
     btnEl.appendChild(chip);
   });
   const last = items[items.length - 1];
-  selectRotationSet(last.rows, btnEl.children[items.length - 1]);
+  selectRotationSet(last.rows, btnEl.children[items.length - 1], last.oppRows);
 }
 
 function selectTeam(chipEl) {

@@ -1,5 +1,10 @@
 [
   {
+    "matchDate": "30/08/2026",
+    "opponent": "千葉ベルズ",
+    "dataFile": "2026-08-30_千葉ベルズ.json"
+  },
+  {
     "matchDate": "11/08/2026",
     "opponent": "國學院大學",
     "dataFile": "2026-08-11_國學院大學.json"
