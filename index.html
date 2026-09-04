@@ -3351,7 +3351,26 @@ function drawMatchSummaryCanvas(canvas, data, setIndex) {
   const tileRowH = 62, tileGap = 10;
   const tileRows = Math.ceil(tiles.length / 3);
   const tilesH = tileRows * tileRowH + (tileRows - 1) * tileGap;
-  const tableTop = bodyTop + 20 + tilesH + 30 + 20;
+
+  // スタメン（開始時のローテーション）。特定のセットを見ているときはそのセット、
+  // 「全セット」合計のときはスタメン情報がある最初のセットを表示する。
+  // 古い試合（この機能に対応する前に取り込んだ試合）はstartingLineupが無いので、その場合は表示ごと省略する。
+  const bySetArr = data.scoreProgression.bySet || [];
+  const lineupSetIdx = setIndex !== null
+    ? setIndex
+    : bySetArr.findIndex(s => s.startingLineup && s.startingLineup.length === 6);
+  const lineupSet = lineupSetIdx >= 0 ? bySetArr[lineupSetIdx] : null;
+  const lineup = (lineupSet && lineupSet.startingLineup && lineupSet.startingLineup.length === 6)
+    ? lineupSet.startingLineup
+    : null;
+  const lineupGap = 8;
+  const lineupBoxW = (W - PAD * 2 - lineupGap * 2) / 3;
+  const lineupBoxH = 44;
+  const lineupSectionY = bodyTop + 14 + tilesH + 30;
+  const lineupBlockH = lineup ? (14 + lineupBoxH * 2 + lineupGap + 30) : 0;
+
+  const playerSectionY = lineupSectionY + lineupBlockH;
+  const tableTop = playerSectionY + 26;
   const rowH = 36, headRowH = 26;
   const tableBodyH = Math.max(players.length, 1) * rowH;
   const footH = 40;
@@ -3467,7 +3486,43 @@ function drawMatchSummaryCanvas(canvas, data, setIndex) {
     ctx.fillText(summaryEllipsize(ctx, tl.sub, tileW - 16), tx + 10, ty + 55);
   });
 
-  const playerSectionY = bodyTop + 14 + tilesH + 30;
+  // スタメン（開始時のローテーション）
+  if (lineup) {
+    sectionTitle(`スタメン（第${lineupSetIdx + 1}セット開始時点）`, lineupSectionY);
+    const front = [lineup[3], lineup[2], lineup[1]]; // P4,P3,P2（ネット側）
+    const back = [lineup[4], lineup[5], lineup[0]];  // P5,P6,P1（サーバー）
+    [front, back].forEach((rowNums, rIdx) => {
+      rowNums.forEach((num, cIdx) => {
+        const bx = PAD + cIdx * (lineupBoxW + lineupGap);
+        const by = lineupSectionY + 14 + rIdx * (lineupBoxH + lineupGap);
+        ctx.fillStyle = '#f6f7fa';
+        ctx.strokeStyle = '#e4e4e0';
+        summaryRoundRect(ctx, bx, by, lineupBoxW, lineupBoxH, 8);
+        ctx.fill(); ctx.stroke();
+
+        const name = ROSTER[num] || `#${num}`;
+        ctx.font = '700 13px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+        const displayName = summaryEllipsize(ctx, name, lineupBoxW - 16);
+        const dw = ctx.measureText(displayName).width;
+        ctx.fillStyle = '#1b2333';
+        ctx.fillText(displayName, bx + lineupBoxW / 2 - dw / 2, by + lineupBoxH / 2 + 5);
+
+        if (num === lineup[0]) {
+          const bR = 9;
+          const bcx = bx + lineupBoxW - bR - 4, bcy = by + bR + 4;
+          ctx.fillStyle = '#e5484d';
+          ctx.beginPath();
+          ctx.arc(bcx, bcy, bR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '700 10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+          const sw = ctx.measureText('S').width;
+          ctx.fillText('S', bcx - sw / 2, bcy + 3.5);
+        }
+      });
+    });
+  }
+
   sectionTitle(`選手別スタッツ（${scope.label}）`, playerSectionY);
 
   // 選手テーブル
