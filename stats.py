@@ -3630,33 +3630,49 @@ function drawMatchSummaryCanvas(canvas, data, setIndex) {
         ctx.fillText(sub, col.x + col.w / 2 - tw / 2, subY + 4);
       }
     }
-    // ％【本数】の1行表示（サイトの表と同じ形式）。mainは太字、bracketは小さいグレー文字。
-    function cellRate(col, main, bracket) {
-      ctx.font = '700 12.5px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+    // ラベル（決定率など）＋％＋【本数】の1行表示（サイトの表と同じ形式）。
+    // ラベルは小さいグレー文字、mainは太字、bracketも小さいグレー文字（2026-09-04：ラベルを復活、小さめのサイズで）。
+    function cellRate(col, label, main, bracket) {
+      const labelFont = '9px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+      const mainFont = '700 12.5px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+      const bracketFont = '10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+      let labelW = 0;
+      if (label) {
+        ctx.font = labelFont;
+        labelW = ctx.measureText(label).width;
+      }
+      ctx.font = mainFont;
       const mainW = ctx.measureText(main).width;
       let bracketW = 0;
       if (bracket) {
-        ctx.font = '10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+        ctx.font = bracketFont;
         bracketW = ctx.measureText(bracket).width;
       }
-      const gap = bracket ? 3 : 0;
-      let x = col.x + col.w / 2 - (mainW + gap + bracketW) / 2;
+      const gap1 = label ? 2 : 0;
+      const gap2 = bracket ? 3 : 0;
+      let x = col.x + col.w / 2 - (labelW + gap1 + mainW + gap2 + bracketW) / 2;
+      if (label) {
+        ctx.fillStyle = '#9aa1ae';
+        ctx.font = labelFont;
+        ctx.fillText(label, x, midY + 3);
+        x += labelW + gap1;
+      }
       ctx.fillStyle = '#1b2333';
-      ctx.font = '700 12.5px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+      ctx.font = mainFont;
       ctx.fillText(main, x, midY + 4);
       if (bracket) {
-        x += mainW + gap;
+        x += mainW + gap2;
         ctx.fillStyle = '#9aa1ae';
-        ctx.font = '10px "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif';
+        ctx.font = bracketFont;
         ctx.fillText(bracket, x, midY + 4);
       }
     }
     const killBracket = p.attempts ? `【${p.points}/${p.attempts}本】` : '';
-    cellRate(cols[2], pct(p.kill_rate), killBracket);
+    cellRate(cols[2], '決定率', pct(p.kill_rate), killBracket);
     const serveBracket = p.serve_attempts ? `【${(p.serve_aces || 0) + (p.serve_half_credit || 0)}/${p.serve_attempts}本】` : '';
-    cellRate(cols[3], pct(p.serve_efficiency), serveBracket);
+    cellRate(cols[3], '効果率', pct(p.serve_efficiency), serveBracket);
     const receiveBracket = p.receive_attempts ? `【${(p.receive_a || 0) + (p.receive_b || 0)}/${p.receive_attempts}本】` : '';
-    cellRate(cols[4], pct(p.receive_ab_rate), receiveBracket);
+    cellRate(cols[4], 'AB率', pct(p.receive_ab_rate), receiveBracket);
     cell(cols[5], `${p.block_points}本`, '');
   });
 
