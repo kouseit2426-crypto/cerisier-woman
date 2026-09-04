@@ -3545,11 +3545,11 @@ function drawMatchSummaryCanvas(canvas, data, setIndex) {
       }
     }
     const killBracket = p.attempts ? `【${p.points}/${p.attempts}本】` : '';
-    cellRate(cols[2], `決定率${pct(p.kill_rate)}`, killBracket);
+    cellRate(cols[2], pct(p.kill_rate), killBracket);
     const serveBracket = p.serve_attempts ? `【${(p.serve_aces || 0) + (p.serve_half_credit || 0)}/${p.serve_attempts}本】` : '';
-    cellRate(cols[3], `効果率${pct(p.serve_efficiency)}`, serveBracket);
+    cellRate(cols[3], pct(p.serve_efficiency), serveBracket);
     const receiveBracket = p.receive_attempts ? `【${(p.receive_a || 0) + (p.receive_b || 0)}/${p.receive_attempts}本】` : '';
-    cellRate(cols[4], `AB率${pct(p.receive_ab_rate)}`, receiveBracket);
+    cellRate(cols[4], pct(p.receive_ab_rate), receiveBracket);
     cell(cols[5], `${p.block_points}本`, '');
   });
 
