@@ -2574,6 +2574,10 @@ let CURRENT_OPP_COURSE_ROW = null;
 let CURRENT_OPP_COURSE_FILTER = 'all';
 let CURRENT_OPP_COURSE_REAL_KEY = null;
 
+// コート図の左右は、こうせいさんの実際のコート図（レフト＝向かって右／ライト＝向かって左）に
+// 合わせるため、左右反転させて描画する（2026-09-04）。mx()を通した座標だけを使う。
+function mx(x) { return 200 - x; }
+
 function opponentCourseDiagramSvg(totalRow, filterCat, realKey) {
   if (!totalRow || !totalRow.points) return '';
   const catsToShow = filterCat === 'all' ? ['left', 'right', 'middle', 'pipe'] : [filterCat];
@@ -2589,21 +2593,23 @@ function opponentCourseDiagramSvg(totalRow, filterCat, realKey) {
     if (realPts && realPts.length) {
       // 実データ（スクリーンショットから読み取った実際の着地位置）がある場合は、1本ずつ点を打つ
       realPts.forEach(([px, py]) => {
+        const x = mx(px);
         arrows += `
-          <line x1="${originX}" y1="${originY}" x2="${px}" y2="${py}" stroke="var(--series-blue)" stroke-width="1" stroke-dasharray="2,2" opacity="0.55" />
-          <circle cx="${px}" cy="${py}" r="3" fill="var(--series-blue)" opacity="0.85" />`;
+          <line x1="${originX}" y1="${originY}" x2="${x}" y2="${py}" stroke="var(--series-blue)" stroke-width="1" stroke-dasharray="2,2" opacity="0.55" />
+          <circle cx="${x}" cy="${py}" r="3" fill="var(--series-blue)" opacity="0.85" />`;
       });
       realLegendParts.push(`${CATEGORY_LABELS[cat]}（実データ${realPts.length}本）`);
       realNote = '<p class="hint" style="margin-top:6px">実データがある方向は、スクリーンショットから読み取った実際の着地位置を1本ずつ表示しています（読み取りのため近似値です）。それ以外は代表点での簡易表示です。</p>';
     } else {
       const pt = OPPONENT_COURSE_POINTS[cat];
       if (!pt) return;
+      const x = mx(pt.x);
       const pct = totalRow.points ? Math.round((c.points / totalRow.points) * 1000) / 10 : 0;
       arrows += `
-        <line x1="${originX}" y1="${originY}" x2="${pt.x}" y2="${pt.y}" stroke="var(--series-blue)" stroke-width="1.6" stroke-dasharray="3,3" />
-        <circle cx="${pt.x}" cy="${pt.y}" r="5" fill="var(--series-blue)" />
-        <text x="${pt.x}" y="${pt.y - 11}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text-primary)">${CATEGORY_LABELS[cat]}</text>
-        <text x="${pt.x}" y="${pt.y + 19}" text-anchor="middle" font-size="10" fill="var(--text-secondary)">${c.points}本（${pct}%）</text>`;
+        <line x1="${originX}" y1="${originY}" x2="${x}" y2="${pt.y}" stroke="var(--series-blue)" stroke-width="1.6" stroke-dasharray="3,3" />
+        <circle cx="${x}" cy="${pt.y}" r="5" fill="var(--series-blue)" />
+        <text x="${x}" y="${pt.y - 11}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text-primary)">${CATEGORY_LABELS[cat]}</text>
+        <text x="${x}" y="${pt.y + 19}" text-anchor="middle" font-size="10" fill="var(--text-secondary)">${c.points}本（${pct}%）</text>`;
     }
   });
   const legendHtml = realLegendParts.length
