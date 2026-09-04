@@ -1444,7 +1444,9 @@ function dvPlayerSummary(number, s, roster, name) {
     serve_plus: s.serve_plus, serve_exclaim: s.serve_exclaim,
     serve_ace_rate: dvRate(s.serve_aces, s.serve_attempts),
     serve_error_rate: dvRate(s.serve_errors, s.serve_attempts),
-    serve_efficiency: dvRate(s.serve_aces - s.serve_errors + 0.5 * s.serve_half_credit, s.serve_attempts),
+    // 効果率 = (エース×100 + 効果（＋／）×25 − ミス×25) ÷ 打数（2026-09-04、こうせいさんの指定の計算式に変更）。
+    // dvRate→pct()の流れ（あとで×100して％表示）に合わせるため、分子はあらかじめ100で割った係数にしてある。
+    serve_efficiency: dvRate(s.serve_aces * 1.0 + s.serve_half_credit * 0.25 - s.serve_errors * 0.25, s.serve_attempts),
     receive_attempts: s.receive_attempts, receive_a: s.receive_a, receive_b: s.receive_b,
     receive_c: s.receive_c, receive_d: s.receive_d, receive_errors: s.receive_errors,
     receive_return_rate: dvRate(s.receive_attempts - s.receive_errors, s.receive_attempts),
@@ -4245,7 +4247,8 @@ function combineStatsList(statsList) {
     efficiency: dvRate(sum.points - sum.errors - sum.blocked, sum.attempts),
     serve_ace_rate: dvRate(sum.serve_aces, sum.serve_attempts),
     serve_error_rate: dvRate(sum.serve_errors, sum.serve_attempts),
-    serve_efficiency: dvRate(sum.serve_aces - sum.serve_errors + 0.5 * sum.serve_half_credit, sum.serve_attempts),
+    // 効果率 = (エース×100 + 効果（＋／）×25 − ミス×25) ÷ 打数（2026-09-04、こうせいさんの指定の計算式に変更）。
+    serve_efficiency: dvRate(sum.serve_aces * 1.0 + sum.serve_half_credit * 0.25 - sum.serve_errors * 0.25, sum.serve_attempts),
     receive_return_rate: dvRate(sum.receive_attempts - sum.receive_errors, sum.receive_attempts),
     receive_a_rate: dvRate(sum.receive_a, sum.receive_attempts),
     receive_ab_rate: dvRate(sum.receive_a + sum.receive_b, sum.receive_attempts),
@@ -5487,7 +5490,9 @@ def player_summary(number, s, name=None):
         'serve_half_credit': s['serve_half_credit'],
         'serve_ace_rate': rate(s['serve_aces'], s['serve_attempts']),
         'serve_error_rate': rate(s['serve_errors'], s['serve_attempts']),
-        'serve_efficiency': rate(s['serve_aces'] - s['serve_errors'] + 0.5 * s['serve_half_credit'], s['serve_attempts']),
+        # 効果率 = (エース×100 + 効果（＋／）×25 − ミス×25) ÷ 打数（2026-09-04、こうせいさんの指定の計算式に変更）。
+        # rate()の結果はあとで×100して％表示するので、分子はあらかじめ100で割った係数にしてある。
+        'serve_efficiency': rate(s['serve_aces'] * 1.0 + s['serve_half_credit'] * 0.25 - s['serve_errors'] * 0.25, s['serve_attempts']),
         'receive_attempts': s['receive_attempts'],
         'receive_a': s['receive_a'],
         'receive_b': s['receive_b'],
@@ -5744,7 +5749,7 @@ def print_serve_table(stats_dict):
             continue
         ace_rate = s['serve_aces'] / s['serve_attempts']
         err_rate = s['serve_errors'] / s['serve_attempts']
-        efficiency = (s['serve_aces'] - s['serve_errors'] + 0.5 * s['serve_half_credit']) / s['serve_attempts']
+        efficiency = (s['serve_aces'] * 100 + s['serve_half_credit'] * 25 - s['serve_errors'] * 25) / s['serve_attempts'] / 100
         print(f"{name:<10}{s['serve_attempts']:>5}{s['serve_aces']:>7}{s['serve_errors']:>5}"
               f"{ace_rate:>9.1%}{err_rate:>8.1%}{efficiency:>8.1%}")
 
