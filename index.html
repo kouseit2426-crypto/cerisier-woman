@@ -627,6 +627,23 @@
       </div>
     </div>
 
+    <div class="card collapsible closed" id="opponentCourseCard">
+      <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3 class="section-label" style="margin-top:0">相手が決めた攻撃のコース（％）</h3>
+        <span class="collapse-arrow">▾</span>
+      </button>
+      <div class="collapsible-body">
+        <p class="hint" style="margin-top:-6px">
+          相手が得点した攻撃だけを、コンビの分類でレフト／ミドル／ライト／バックアタックに分けています。
+          実際の着地位置ではなく、コースの分類ごとの代表的な位置に矢印を表示した簡易図です。セットを選んでください。
+        </p>
+        <div class="player-grid" id="opponentCourseSetButtons" style="margin-bottom:12px"></div>
+        <div class="player-grid" id="opponentCourseFilterButtons" style="margin-bottom:10px"></div>
+        <div id="opponentCourseBody"></div>
+        <div id="opponentCourseDiagram" style="margin-top:12px"></div>
+      </div>
+    </div>
+
     <div class="card collapsible closed" id="rotationCard">
       <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
         <h3 class="section-label" id="rotationCardLabel" style="margin-top:0">ローテーション別 攻撃タイプ分布（チーム全体）</h3>
@@ -648,14 +665,6 @@
           強打＝しっかり打ち込んだ攻撃、フェイント＝相手コートへ軽く落とす攻撃です。
         </p>
         <div id="attackTechniqueBody"></div>
-        <h4 style="margin:16px 0 8px;font-size:14px">相手が決めた攻撃のコース（％）</h4>
-        <p class="hint" style="margin-top:-4px">
-          相手が得点した攻撃だけを、コンビの分類でレフト／ミドル／ライト／バックアタックに分けています。
-          実際の着地位置ではなく、コースの分類ごとの代表的な位置に矢印を表示した簡易図です。
-        </p>
-        <div class="player-grid" id="opponentCourseFilterButtons" style="margin-bottom:10px"></div>
-        <div id="opponentCourseBody"></div>
-        <div id="opponentCourseDiagram" style="margin-top:12px"></div>
         <div id="rotationTables" style="margin-top:16px"></div>
       </div>
     </div>
@@ -2456,25 +2465,60 @@ const OPPONENT_COURSE_POINTS = {
   right: { x: 155, y: 175 },
   pipe: { x: 100, y: 120 },
 };
+
+// こうせいさんがVolleyStationの「決定率100%（＝決めた攻撃だけ）」の画面をスクリーンショットで送ってくれたものから、
+// 黒い点（実際の着地位置）の座標を読み取って登録した実データ（2026-09-04追加）。
+// あくまで画像から読み取った近似値で、1本1本の正確な数値データではない点に注意。
+// キー：dvBuildMatchSlug(matchDate, opponent) と同じ形式（例: '2026-08-30_千葉ベルズ'）。
+// カテゴリごとの本数は、画面外のコンビも含む正式な集計（stat-tilesの数字）と一致しない場合がある
+// （スクリーンショットに写っていたコンビだけを読み取っているため）。
+const OPPONENT_COURSE_REAL_POINTS = {
+  '2026-08-30_千葉ベルズ': {
+    left: [[62.7,289.3],[81.8,286],[119.2,247.8],[99.3,246.4],[50.4,240.8],[167.5,230.6],[61.2,225.2],[66.8,210.2],[136.2,201.8],[46.6,193.3],[69.6,190.7],[126.8,189.9],[20.7,151.8],[141.6,151.6],[56.8,136.2],[111.2,147.3],[169.2,125.9],[114.4,285.3],[170.1,281.2],[182.6,250.9],[86.7,247.2],[136.4,232.8],[78.7,206]],
+    middle: [[162.1,202.1],[149.6,201.5],[120.4,195.5],[145,190.7],[76.2,158.1],[101.4,119],[169,236.7],[71.3,208.5],[142.3,188.1],[81.6,236.1],[146.4,212.3],[89.4,201.7],[105.1,199.7],[119.7,181.1],[35.4,179.9]],
+    right: [[65.8,278.4],[56.8,247.6],[113.2,243],[70.1,227.3],[133.1,187.9],[79.8,188.2],[40,112.6]],
+  },
+};
+
 let CURRENT_OPP_COURSE_ROW = null;
 let CURRENT_OPP_COURSE_FILTER = 'all';
+let CURRENT_OPP_COURSE_REAL_KEY = null;
 
-function opponentCourseDiagramSvg(totalRow, filterCat) {
+function opponentCourseDiagramSvg(totalRow, filterCat, realKey) {
   if (!totalRow || !totalRow.points) return '';
   const catsToShow = filterCat === 'all' ? ['left', 'right', 'middle', 'pipe'] : [filterCat];
   const originX = 100, originY = 70;
+  const realData = realKey ? OPPONENT_COURSE_REAL_POINTS[realKey] : null;
   let arrows = '';
+  let realNote = '';
+  const realLegendParts = [];
   catsToShow.forEach(cat => {
     const c = totalRow.categories[cat];
-    const pt = OPPONENT_COURSE_POINTS[cat];
-    if (!pt || !c) return;
-    const pct = totalRow.points ? Math.round((c.points / totalRow.points) * 1000) / 10 : 0;
-    arrows += `
-      <line x1="${originX}" y1="${originY}" x2="${pt.x}" y2="${pt.y}" stroke="var(--series-blue)" stroke-width="1.6" stroke-dasharray="3,3" />
-      <circle cx="${pt.x}" cy="${pt.y}" r="5" fill="var(--series-blue)" />
-      <text x="${pt.x}" y="${pt.y - 11}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text-primary)">${CATEGORY_LABELS[cat]}</text>
-      <text x="${pt.x}" y="${pt.y + 19}" text-anchor="middle" font-size="10" fill="var(--text-secondary)">${c.points}本（${pct}%）</text>`;
+    if (!c) return;
+    const realPts = realData ? realData[cat] : null;
+    if (realPts && realPts.length) {
+      // 実データ（スクリーンショットから読み取った実際の着地位置）がある場合は、1本ずつ点を打つ
+      realPts.forEach(([px, py]) => {
+        arrows += `
+          <line x1="${originX}" y1="${originY}" x2="${px}" y2="${py}" stroke="var(--series-blue)" stroke-width="1" stroke-dasharray="2,2" opacity="0.55" />
+          <circle cx="${px}" cy="${py}" r="3" fill="var(--series-blue)" opacity="0.85" />`;
+      });
+      realLegendParts.push(`${CATEGORY_LABELS[cat]}（実データ${realPts.length}本）`);
+      realNote = '<p class="hint" style="margin-top:6px">実データがある方向は、スクリーンショットから読み取った実際の着地位置を1本ずつ表示しています（読み取りのため近似値です）。それ以外は代表点での簡易表示です。</p>';
+    } else {
+      const pt = OPPONENT_COURSE_POINTS[cat];
+      if (!pt) return;
+      const pct = totalRow.points ? Math.round((c.points / totalRow.points) * 1000) / 10 : 0;
+      arrows += `
+        <line x1="${originX}" y1="${originY}" x2="${pt.x}" y2="${pt.y}" stroke="var(--series-blue)" stroke-width="1.6" stroke-dasharray="3,3" />
+        <circle cx="${pt.x}" cy="${pt.y}" r="5" fill="var(--series-blue)" />
+        <text x="${pt.x}" y="${pt.y - 11}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text-primary)">${CATEGORY_LABELS[cat]}</text>
+        <text x="${pt.x}" y="${pt.y + 19}" text-anchor="middle" font-size="10" fill="var(--text-secondary)">${c.points}本（${pct}%）</text>`;
+    }
   });
+  const legendHtml = realLegendParts.length
+    ? `<p style="text-align:center;font-size:11px;font-weight:700;color:var(--text-primary);margin:6px 0 0">${realLegendParts.join('　')}</p>`
+    : '';
   return `
     <svg viewBox="0 0 200 300" style="width:100%;max-width:260px;display:block;margin:0 auto" xmlns="http://www.w3.org/2000/svg">
       <rect x="10" y="20" width="180" height="270" fill="none" stroke="var(--border)" stroke-width="1.5" />
@@ -2485,16 +2529,17 @@ function opponentCourseDiagramSvg(totalRow, filterCat) {
       <line x1="10" y1="70" x2="190" y2="70" stroke="var(--text-primary)" stroke-width="2.5" />
       <circle cx="${originX}" cy="${originY}" r="4" fill="#e5484d" />
       ${arrows}
-    </svg>`;
+    </svg>${legendHtml}${realNote}`;
 }
 
 function setOpponentCourseFilter(key) {
   CURRENT_OPP_COURSE_FILTER = key;
-  renderOpponentCourseSection(CURRENT_OPP_COURSE_ROW);
+  renderOpponentCourseSection(CURRENT_OPP_COURSE_ROW, CURRENT_OPP_COURSE_REAL_KEY);
 }
 
-function renderOpponentCourseSection(totalRow) {
+function renderOpponentCourseSection(totalRow, realKey) {
   CURRENT_OPP_COURSE_ROW = totalRow;
+  CURRENT_OPP_COURSE_REAL_KEY = realKey || null;
   const filterBtnsEl = document.getElementById('opponentCourseFilterButtons');
   if (filterBtnsEl) {
     filterBtnsEl.innerHTML = '';
@@ -2510,10 +2555,10 @@ function renderOpponentCourseSection(totalRow) {
   const oppCourseBody = document.getElementById('opponentCourseBody');
   if (oppCourseBody) oppCourseBody.innerHTML = opponentCourseHtml(totalRow);
   const diagramEl = document.getElementById('opponentCourseDiagram');
-  if (diagramEl) diagramEl.innerHTML = opponentCourseDiagramSvg(totalRow, CURRENT_OPP_COURSE_FILTER);
+  if (diagramEl) diagramEl.innerHTML = opponentCourseDiagramSvg(totalRow, CURRENT_OPP_COURSE_FILTER, CURRENT_OPP_COURSE_REAL_KEY);
 }
 
-function selectRotationSet(rows, chipEl, oppRows) {
+function selectRotationSet(rows, chipEl) {
   document.querySelectorAll('#rotationSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
   chipEl.classList.add('selected');
   document.getElementById('rotationTables').innerHTML = rotationTableHtml(rows);
@@ -2521,10 +2566,6 @@ function selectRotationSet(rows, chipEl, oppRows) {
   document.getElementById('tossDistributionBody').innerHTML = tossDistributionHtml(totalRow);
   const techBody = document.getElementById('attackTechniqueBody');
   if (techBody) techBody.innerHTML = attackTechniqueHtml(totalRow);
-  const oppTotalRow = (oppRows && oppRows.length)
-    ? (oppRows.find(r => r.rotation === '合計') || oppRows[oppRows.length - 1])
-    : null;
-  renderOpponentCourseSection(oppTotalRow);
 }
 
 function showRotationTables() {
@@ -2536,23 +2577,86 @@ function showRotationTables() {
   const items = DATA.rotation.bySet.map((s, i) => ({
     label: `第${s.setNumber}セット`,
     rows: s.rows,
-    oppRows: (DATA.opponentRotation && DATA.opponentRotation.bySet[i]) ? DATA.opponentRotation.bySet[i].rows : null,
   }));
   items.push({
     label: '全セット合計',
     rows: DATA.rotation.total.rows,
-    oppRows: DATA.opponentRotation ? DATA.opponentRotation.total.rows : null,
   });
   items.forEach((item, idx) => {
     const chip = document.createElement('button');
     chip.className = 'player-chip';
     chip.textContent = item.label;
-    chip.addEventListener('click', () => selectRotationSet(item.rows, chip, item.oppRows));
+    chip.addEventListener('click', () => selectRotationSet(item.rows, chip));
     if (idx === items.length - 1) chip.classList.add('selected');
     btnEl.appendChild(chip);
   });
   const last = items[items.length - 1];
-  selectRotationSet(last.rows, btnEl.children[items.length - 1], last.oppRows);
+  selectRotationSet(last.rows, btnEl.children[items.length - 1]);
+}
+
+// 「相手が決めた攻撃のコース」カード専用のセット切り替え（rotationCardとは別カードになったので、
+// セット選択ボタンも別に持つ。2026-09-04追加）
+function selectOpponentCourseSet(rows, chipEl, realKey) {
+  document.querySelectorAll('#opponentCourseSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
+  if (chipEl) chipEl.classList.add('selected');
+  const totalRow = (rows && rows.length) ? (rows.find(r => r.rotation === '合計') || rows[rows.length - 1]) : null;
+  renderOpponentCourseSection(totalRow, realKey);
+}
+
+function showOpponentCourseSets() {
+  const btnEl = document.getElementById('opponentCourseSetButtons');
+  if (!btnEl) return;
+  btnEl.innerHTML = '';
+  const matchSlug = dvBuildMatchSlug(DATA.matchDate, DATA.opponent);
+  const items = (DATA.opponentRotation ? DATA.opponentRotation.bySet : []).map(s => ({
+    label: `第${s.setNumber}セット`,
+    rows: s.rows,
+    realKey: null, // 実データはセット別ではなく試合合計でしか持っていない
+  }));
+  items.push({
+    label: '全セット合計',
+    rows: DATA.opponentRotation ? DATA.opponentRotation.total.rows : [],
+    realKey: matchSlug,
+  });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectOpponentCourseSet(item.rows, chip, item.realKey));
+    if (idx === items.length - 1) chip.classList.add('selected');
+    btnEl.appendChild(chip);
+  });
+  const last = items[items.length - 1];
+  selectOpponentCourseSet(last.rows, btnEl.children[items.length - 1], last.realKey);
+}
+
+// 試合を2つ以上選んでいるとき用（rotationCardのshowRotationTablesCombinedと同じパターン）
+function showOpponentCourseSetsCombined(entries, dataList) {
+  const btnEl = document.getElementById('opponentCourseSetButtons');
+  if (!btnEl) return;
+  btnEl.innerHTML = '';
+  const items = dataList.map(d => ({
+    label: `${d.opponent}（${formatMatchDate(d.matchDate)}）`,
+    rows: d.opponentRotation ? d.opponentRotation.total.rows : [],
+    realKey: dvBuildMatchSlug(d.matchDate, d.opponent), // その試合単体を見ているときだけ実データを使う
+  }));
+  items.push({
+    label: '全体',
+    rows: combineRotationRows(dataList.map(d => (d.opponentRotation && d.opponentRotation.total.rows) || [])),
+    realKey: null, // 複数試合の合算では実データ（1試合分）は使わない
+  });
+  items.forEach((item, idx) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'player-chip';
+    chip.textContent = item.label;
+    chip.addEventListener('click', () => selectOpponentCourseSet(item.rows, chip, item.realKey));
+    if (idx === items.length - 1) chip.classList.add('selected');
+    btnEl.appendChild(chip);
+  });
+  const last = items[items.length - 1];
+  selectOpponentCourseSet(last.rows, btnEl.children[items.length - 1], last.realKey);
 }
 
 // 試合を2つ以上選んでいるとき：試合ごとのボタン＋「全体」（選んだ試合すべての合計）を並べて選べるようにする
@@ -2567,23 +2671,21 @@ function showRotationTablesCombined(entries, dataList) {
   const items = dataList.map(d => ({
     label: `${d.opponent}（${formatMatchDate(d.matchDate)}）`,
     rows: d.rotation.total.rows,
-    oppRows: d.opponentRotation ? d.opponentRotation.total.rows : null,
   }));
   items.push({
     label: '全体',
     rows: combineRotationRows(dataList.map(d => d.rotation.total.rows)),
-    oppRows: combineRotationRows(dataList.map(d => (d.opponentRotation && d.opponentRotation.total.rows) || [])),
   });
   items.forEach((item, idx) => {
     const chip = document.createElement('button');
     chip.className = 'player-chip';
     chip.textContent = item.label;
-    chip.addEventListener('click', () => selectRotationSet(item.rows, chip, item.oppRows));
+    chip.addEventListener('click', () => selectRotationSet(item.rows, chip));
     if (idx === items.length - 1) chip.classList.add('selected');
     btnEl.appendChild(chip);
   });
   const last = items[items.length - 1];
-  selectRotationSet(last.rows, btnEl.children[items.length - 1], last.oppRows);
+  selectRotationSet(last.rows, btnEl.children[items.length - 1]);
 }
 
 function selectTeam(chipEl) {
@@ -3108,12 +3210,14 @@ function showSingleMatch(data, entries, dataList) {
   const combined = entries && dataList && entries.length >= 2;
   if (combined) {
     showRotationTablesCombined(entries, dataList);
+    showOpponentCourseSetsCombined(entries, dataList);
     showSideOutBreakTableCombined(entries, dataList);
     showScoringPatternCombined(entries, dataList);
     showScoreProgressionChartsCombined(entries, dataList);
     showRunHighlightsCombined(entries, dataList);
   } else {
     showRotationTables();
+    showOpponentCourseSets();
     showSideOutBreakTable();
     showScoringPattern();
     showScoreProgressionCharts();
