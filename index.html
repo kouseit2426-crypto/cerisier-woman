@@ -19,6 +19,7 @@
     --series-orange:  #eb6834;
     --series-aqua:    #1baf7a;
     --series-yellow:  #eda100;
+    --series-purple:  #8b5fbf;
   }
   @media (prefers-color-scheme: dark) {
     .viz-root {
@@ -35,6 +36,7 @@
       --series-orange:  #d95926;
       --series-aqua:    #199e70;
       --series-yellow:  #c98500;
+      --series-purple:  #a47bd1;
     }
   }
 
@@ -3956,13 +3958,15 @@ function playerTrendChartSvg(number, matches) {
 }
 
 // ==================== チーム全体の、試合をまたいだ推移グラフ ====================
-// サイドアウト率・ブレイク率・アタック決定率・アタック効果率の4つを、選んだ試合を
-// 日付順に並べて折れ線グラフにする。「月ごとにまとめて選ぶ」ボタンと組み合わせて使う想定。
+// サイドアウト率・ブレイク率・アタック決定率・アタック効果率・サーブレシーブ率の5つを、
+// 選んだ試合を日付順に並べて折れ線グラフにする。「月ごとにまとめて選ぶ」ボタンと組み合わせて使う想定。
 const TEAM_TREND_SERIES = [
   { key: 'kill_rate', label: '決定率', colorVar: 'var(--series-blue)', get: m => m.team.total.kill_rate },
   { key: 'efficiency', label: '効果率', colorVar: 'var(--series-orange)', get: m => m.team.total.efficiency },
   { key: 'side_out_rate', label: 'サイドアウト率', colorVar: 'var(--series-aqua)', get: m => m.sideOutBreak.total.side_out_rate },
   { key: 'break_rate', label: 'ブレイク率', colorVar: 'var(--series-yellow)', get: m => m.sideOutBreak.total.break_rate },
+  // サーブレシーブ率（レシーブAB率）。中野さんの提案（2026-09-12）でチーム推移グラフに追加。
+  { key: 'receive_rate', label: 'サーブレシーブ率（AB率）', colorVar: 'var(--series-purple)', get: m => m.team.total.receive_ab_rate },
 ];
 
 function teamTrendChartSvg(matches) {
@@ -4201,11 +4205,15 @@ function combineRotationRows(rowsList) {
       if (!r) return;
       sum.attempts += r.attempts; sum.points += r.points; sum.errors += r.errors;
       CATEGORY_ORDER.forEach(cat => {
-        const c = r.categories[cat];
+        const c = r.categories && r.categories[cat];
+        if (!c) return;
         catSum[cat].attempts += c.attempts; catSum[cat].points += c.points; catSum[cat].errors += c.errors;
       });
+      // 古い形式の試合データ（techniques集計が入る前に作られたもの）には
+      // techniquesが無いことがあるので、無ければその試合分は0として扱う（クラッシュ防止）。
       TECH_ORDER.forEach(t => {
-        const c = r.techniques[t];
+        const c = r.techniques && r.techniques[t];
+        if (!c) return;
         techSum[t].attempts += c.attempts; techSum[t].points += c.points; techSum[t].errors += c.errors;
       });
     });
@@ -4466,7 +4474,7 @@ function showMatchComparison(matches) {
   document.getElementById('matchComparisonCard').style.display = 'block';
   document.getElementById('matchComparisonTitle').textContent = `試合比較（${matches.length}試合）`;
 
-  let html = accordionSectionHtml('team-trend', 'チームの推移（サイドアウト率・ブレイク率・決定率・効果率）', teamTrendChartSvg(matches));
+  let html = accordionSectionHtml('team-trend', 'チームの推移（サイドアウト率・ブレイク率・決定率・効果率・サーブレシーブ率）', teamTrendChartSvg(matches));
 
   // 相手チーム分析（スカウティング）セクションは2026-08-29にいったん非表示に。
   // opponentAnalysisHtml関数自体はそのまま残っているので、また使いたくなったら
