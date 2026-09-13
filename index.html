@@ -1481,6 +1481,9 @@ function dvBuildDashboardData(content, opponentName, ownTeamCode, teamLabel, ros
 // ==================== ここから：チームごとの設定 + ドラッグ&ドロップUI ====================
 const OWN_TEAM_CODE = 'TSJ';
 const ROSTER = {"1": "本村 嘉菜", "2": "北川 茉奈", "3": "島崎 葵", "4": "菊田 美優", "5": "萩谷 歩未", "6": "大石 麻美", "7": "坂本 朱乃", "8": "早野 有美", "9": "佐藤 まひろ", "10": "関口 希望", "11": "安藤 美果", "12": "小林 琉夏"};
+// スタメン図の「S」バッジは、セット開始時点のサーバーではなく、
+// チームのセッター（背番号固定）を示す（こうせいさんの指定、2026-09-13）。
+const SETTER_NUMBERS = [9, 6];
 
 let MATCHES = [];
 
@@ -2146,9 +2149,9 @@ function scoreChartSvg(points, title, ownLabel, opponentLabel) {
 
 // ==================== セット開始時点のスタメン（P1〜P6） ====================
 // 選手ランキングのすぐ上に、セットを選ぶボタンで切り替えて見せる（1試合を選んでいるときのみ）
-function jerseySlotHtml(number, isServer) {
+function jerseySlotHtml(number, isSetter) {
   const name = ROSTER[number] || `#${number}`;
-  const badge = isServer ? '<span class="jersey-badge">S</span>' : '';
+  const badge = isSetter ? '<span class="jersey-badge">S</span>' : '';
   return `<div class="jersey-slot">`
     + `<div class="jersey-name-box">${badge}${escapeHtml(name)}</div>`
     + `</div>`;
@@ -2159,9 +2162,10 @@ function startingLineupHtml(lineup) {
   // コート図と同じ並びにする：前衛（ネット側）＝P4,P3,P2／後衛＝P5,P6,P1（サーブ位置）
   const front = [lineup[3], lineup[2], lineup[1]];
   const back = [lineup[4], lineup[5], lineup[0]];
+  // 「S」バッジはセッターの背番号（SETTER_NUMBERS）に付ける。サーブ位置（lineup[0]）とは無関係。
   let html = '<div class="lineup-court">';
-  html += '<div class="lineup-row">' + front.map(n => jerseySlotHtml(n, false)).join('') + '</div>';
-  html += '<div class="lineup-row">' + back.map(n => jerseySlotHtml(n, n === lineup[0])).join('') + '</div>';
+  html += '<div class="lineup-row">' + front.map(n => jerseySlotHtml(n, SETTER_NUMBERS.includes(n))).join('') + '</div>';
+  html += '<div class="lineup-row">' + back.map(n => jerseySlotHtml(n, SETTER_NUMBERS.includes(n))).join('') + '</div>';
   html += '</div>';
   return html;
 }
@@ -3494,7 +3498,8 @@ function drawMatchSummaryCanvas(canvas, data, setIndex) {
   if (lineup) {
     sectionTitle(`スタメン（第${lineupSetIdx + 1}セット開始時点）`, lineupSectionY);
     const front = [lineup[3], lineup[2], lineup[1]]; // P4,P3,P2（ネット側）
-    const back = [lineup[4], lineup[5], lineup[0]];  // P5,P6,P1（サーバー）
+    const back = [lineup[4], lineup[5], lineup[0]];  // P5,P6,P1（サーブ位置）
+    // 「S」バッジはセッター（SETTER_NUMBERS）に付ける。サーブ位置（lineup[0]）とは無関係。
     [front, back].forEach((rowNums, rIdx) => {
       rowNums.forEach((num, cIdx) => {
         const bx = PAD + cIdx * (lineupBoxW + lineupGap);
@@ -3511,7 +3516,7 @@ function drawMatchSummaryCanvas(canvas, data, setIndex) {
         ctx.fillStyle = '#1b2333';
         ctx.fillText(displayName, bx + lineupBoxW / 2 - dw / 2, by + lineupBoxH / 2 + 5);
 
-        if (num === lineup[0]) {
+        if (SETTER_NUMBERS.includes(num)) {
           const bR = 9;
           const bcx = bx + lineupBoxW - bR - 4, bcy = by + bR + 4;
           ctx.fillStyle = '#e5484d';
