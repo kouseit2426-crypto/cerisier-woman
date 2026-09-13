@@ -916,10 +916,28 @@ function dvAnalyzeSet(linesInSet, ownMarker, backAttackCombos) {
   return stats;
 }
 
+// セッターの位置でローテーションを判定する（こうせいさんの指定、2026-09-13。
+// 以前は「セット開始時点をS1として、並びが変わるたびに+1」という数え方だったが、
+// それだとセッターがどこにいるかとは無関係になってしまうため変更）。
+// SETTER_NUMBERSに入っている選手が今どのポジション(P1〜P6、配列のindex+1)にいるかを
+// そのままローテ番号とする。2人セッター制（6-2、背番号2つ）の場合は、2人目のセッターの
+// 位置を「1人目が同じ並びならいるはずの位置」に換算する（2人は常にコート上で3ポジション
+// 離れているため、+3するだけでよい）。どちらのセッターも見つからない場合
+// （交代でベンチに下がっている等、レアケース）はnullを返し、直前のローテ番号を維持する。
+function dvRotationNumberFromSlice(slice) {
+  const nums = slice.map(v => parseInt(v, 10));
+  for (let i = 0; i < SETTER_NUMBERS.length; i++) {
+    const idx = nums.indexOf(SETTER_NUMBERS[i]);
+    if (idx !== -1) {
+      return ((idx + i * 3) % 6 + 6) % 6 + 1;
+    }
+  }
+  return null;
+}
+
 function dvAnalyzeRotationAttacks(linesInSet, ownMarker, comboCategories) {
   const rotationStats = {};
   for (let n = 1; n <= 6; n++) rotationStats[n] = dvEmptyRotationEntry();
-  let ownRotationKey = null;
   let rotationNumber = 1;
 
   linesInSet.forEach(line => {
@@ -930,13 +948,8 @@ function dvAnalyzeRotationAttacks(linesInSet, ownMarker, comboCategories) {
       const slice = ownMarker === '*' ? fields.slice(14, 20) : fields.slice(20, 26);
       const isAllEmpty = slice.every(v => v === '');
       if (!isAllEmpty) {
-        const key = JSON.stringify(slice);
-        if (ownRotationKey === null) {
-          ownRotationKey = key;
-        } else if (key !== ownRotationKey) {
-          ownRotationKey = key;
-          rotationNumber = (rotationNumber % 6) + 1;
-        }
+        const detected = dvRotationNumberFromSlice(slice);
+        if (detected !== null) rotationNumber = detected;
       }
     }
 
@@ -996,7 +1009,6 @@ function dvMergeRotationStats(allSetRotationStats) {
 function dvAnalyzePlayerRotationAttacks(linesInSet, ownMarker) {
   const result = {};
   for (let n = 1; n <= 6; n++) result[n] = {};
-  let ownRotationKey = null;
   let rotationNumber = 1;
 
   linesInSet.forEach(line => {
@@ -1007,13 +1019,8 @@ function dvAnalyzePlayerRotationAttacks(linesInSet, ownMarker) {
       const slice = ownMarker === '*' ? fields.slice(14, 20) : fields.slice(20, 26);
       const isAllEmpty = slice.every(v => v === '');
       if (!isAllEmpty) {
-        const key = JSON.stringify(slice);
-        if (ownRotationKey === null) {
-          ownRotationKey = key;
-        } else if (key !== ownRotationKey) {
-          ownRotationKey = key;
-          rotationNumber = (rotationNumber % 6) + 1;
-        }
+        const detected = dvRotationNumberFromSlice(slice);
+        if (detected !== null) rotationNumber = detected;
       }
     }
 
@@ -1167,7 +1174,6 @@ function dvMergeSideOutBreak(allSetResults) {
 function dvAnalyzeSideOutBreakByRotation(linesInSet, ownMarker) {
   const result = {};
   for (let n = 1; n <= 6; n++) result[n] = { serve_total: 0, serve_wins: 0, receive_total: 0, receive_wins: 0 };
-  let ownRotationKey = null;
   let rotationNumber = 1;
   let currentServer = null;
 
@@ -1179,13 +1185,8 @@ function dvAnalyzeSideOutBreakByRotation(linesInSet, ownMarker) {
       const slice = ownMarker === '*' ? fields.slice(14, 20) : fields.slice(20, 26);
       const isAllEmpty = slice.every(v => v === '');
       if (!isAllEmpty) {
-        const key = JSON.stringify(slice);
-        if (ownRotationKey === null) {
-          ownRotationKey = key;
-        } else if (key !== ownRotationKey) {
-          ownRotationKey = key;
-          rotationNumber = (rotationNumber % 6) + 1;
-        }
+        const detected = dvRotationNumberFromSlice(slice);
+        if (detected !== null) rotationNumber = detected;
       }
     }
 
