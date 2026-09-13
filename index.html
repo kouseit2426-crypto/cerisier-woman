@@ -653,7 +653,7 @@
       </button>
       <div class="collapsible-body">
         <p class="hint" style="margin-top:-6px" id="rotationCardHint">
-          セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。
+          セッター（9番・6番）が今何番のポジションにいるかをそのままS番号にしています（表はS1→S6→S5→S4→S3→S2の順、実際にチームが回転していく順番です）。
           攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。セットを選んでください。
         </p>
         <div class="player-grid" id="rotationSetButtons"></div>
@@ -716,6 +716,25 @@ const COMBO_CATEGORY_OVERRIDES = { P2: 'left', P9: 'pipe', L9: 'pipe', P3: 'midd
 const TECH_ORDER = ['hard', 'feint', 'other'];
 const TECH_LABELS = { hard: '強打', feint: 'フェイント', other: 'その他' };
 const DV_ATTACK_SHOT_TYPE_RE = /([A-Z])(\d)/;
+
+// ローテーション表の表示順（こうせいさんの指定、2026-09-13）。
+// S番号はセッターの今のコート上ポジション(1〜6)なので、実際にチームが回転していく順番は
+// 1→6→5→4→3→2→(1に戻る)になる（時計回りに回るとポジション番号が1減っていくため）。
+// 集計・保存されているrows配列自体はS番号の昇順(1,2,3,4,5,6)のままにしておき、
+// 表示（HTML化）する直前だけこの順番に並べ替える。
+const ROTATION_DISPLAY_ORDER = [1, 6, 5, 4, 3, 2];
+
+function dvOrderRotationRowsForDisplay(rows) {
+  if (!rows) return rows;
+  const byNumber = new Map();
+  const others = [];
+  rows.forEach(r => {
+    if (typeof r.rotation === 'number') byNumber.set(r.rotation, r);
+    else others.push(r);
+  });
+  const ordered = ROTATION_DISPLAY_ORDER.map(n => byNumber.get(n)).filter(Boolean);
+  return ordered.concat(others);
+}
 
 // アタックの生コード全体（例 '*05AH#P5~24~H2'）から、末尾の「ショットタイプ」文字を取り出す
 function dvAttackShotType(code) {
@@ -2067,7 +2086,7 @@ function rotationTableHtml(rows) {
     html += `<th>${CATEGORY_LABELS[cat]}本数</th><th>${CATEGORY_LABELS[cat]}決定率</th>`;
   });
   html += '</tr></thead><tbody>';
-  rows.forEach(row => {
+  dvOrderRotationRowsForDisplay(rows).forEach(row => {
     const label = typeof row.rotation === 'number' ? `S${row.rotation}` : row.rotation;
     html += `<tr><td>${label}</td><td>${row.attempts}</td><td>${row.points}</td><td>${row.errors}</td><td>${pct(row.kill_rate)}</td>`;
     CATEGORY_ORDER.forEach(cat => {
@@ -2597,7 +2616,7 @@ function selectRotationSet(rows, chipEl) {
 function showRotationTables() {
   document.getElementById('rotationCardLabel').textContent = 'ローテーション別 攻撃タイプ分布（チーム全体）';
   document.getElementById('rotationCardHint').textContent =
-    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。セットを選んでください。';
+    'セッター（9番・6番）が今何番のポジションにいるかをそのままS番号にしています（表はS1→S6→S5→S4→S3→S2の順、実際にチームが回転していく順番です）。攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。セットを選んでください。';
   const btnEl = document.getElementById('rotationSetButtons');
   btnEl.innerHTML = '';
   const items = DATA.rotation.bySet.map((s, i) => ({
@@ -2691,7 +2710,7 @@ function showRotationTablesCombined(entries, dataList) {
   document.getElementById('rotationCardLabel').textContent =
     `ローテーション別 攻撃タイプ分布（チーム全体・選んだ${entries.length}試合）`;
   document.getElementById('rotationCardHint').textContent =
-    'セット開始時のローテーションをS1とし、自チームが1回転するたびにS2→S3…と数えています。攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。試合ごと、または選んだ試合すべての合計（全体）を選べます。';
+    'セッター（9番・6番）が今何番のポジションにいるかをそのままS番号にしています（表はS1→S6→S5→S4→S3→S2の順、実際にチームが回転していく順番です）。攻撃タイプ（レフト／ライト／ミドル／バックアタック）は使用した攻撃コンビの分類によるものです。試合ごと、または選んだ試合すべての合計（全体）を選べます。';
   const btnEl = document.getElementById('rotationSetButtons');
   btnEl.innerHTML = '';
   const items = dataList.map(d => ({
@@ -3003,7 +3022,7 @@ function sideOutBreakByRotationHtml(rows) {
   let html = '<div style="overflow-x:auto"><table class="rotation-table"><thead><tr>'
     + '<th>ローテ</th><th>サーブ本数</th><th>ブレイク率</th><th>レシーブ本数</th><th>サイドアウト率</th>'
     + '</tr></thead><tbody>';
-  rows.forEach(r => {
+  dvOrderRotationRowsForDisplay(rows).forEach(r => {
     html += `<tr><td>S${r.rotation}</td>`
       + `<td>${r.serve_total}</td>`
       + `<td>${pct(r.break_rate)}</td>`
@@ -4254,7 +4273,7 @@ function playerRotationTableHtml(rows) {
   let html = '<div style="overflow-x:auto"><table class="rotation-table"><thead><tr>'
     + '<th>ローテ</th><th>打数</th><th>得点</th><th>ミス</th><th>決定率</th>'
     + '</tr></thead><tbody>';
-  rows.forEach(r => {
+  dvOrderRotationRowsForDisplay(rows).forEach(r => {
     html += `<tr><td>S${r.rotation}</td><td>${r.attempts}</td><td>${r.points}</td><td>${r.errors}</td><td>${pct(r.kill_rate)}</td></tr>`;
   });
   html += '</tbody></table></div>';
