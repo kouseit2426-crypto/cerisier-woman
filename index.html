@@ -1254,21 +1254,39 @@ function dvSideOutBreakSummary(r) {
 // 得点推移に加えて、その得点/失点に自チームのどの選手が絡んだかも記録する
 // （得点直前の自チームの決定'#'なら得点者、失点直前の自チームのミス'='なら
 // そのミスをした選手、相手のミスでの得点は「相手のミス」として選手なしで扱う）
+// サーブ／アタック／ブロックは「＃」（決定・エース・ブロック決定）と「＝」（サーブミス・
+// アタックミス・ブロックミス＝ネットタッチ等）のどちらでもラリーがそこで終わる。
+// レシーブ／セット／ディグ／フリーボールの「＃」は「良いプレー」の意味でラリーは続くので、
+// 得点判定の材料にはしない（この4つの「＝」は依然としてラリーを終わらせる＝相手/自チームのミス）。
+const DV_RALLY_ENDING_SHARP_SKILLS = new Set(['S', 'A', 'B']);
+
 function dvAnalyzeScoreProgression(linesInSet, ownMarker) {
   const points = [{
     own: 0, opponent: 0, scoringTeam: null, scorerNumber: null, byError: false, skill: null,
     opponentScorerNumber: null,
   }];
+  // 直前の記録（最後に出てきた＃／＝）を得点者判定に使うのが基本だが、一部の記録者は
+  // サーブ／アタック／ブロックで決着がついた（＃で決定、＝でミス）後にも、触った側の
+  // 守備プレーを念のためもう一行記録してしまうことがある（例：決定的なアタックの後に
+  // ディグの＝評価が続けて記録される）。そのままだと決定打・ブロックミス等が相手ミス／
+  // 自チームミス扱いにすり替わってしまうため、サーブ／アタック／ブロックで＃か＝が
+  // 一度出たら、その時点でそのラリーの結果を確定させ、それ以降の記録は判定に使わない。
   let lastTeam = null, lastNumber = null, lastEval = null, lastSkill = null;
+  let locked = false;
 
   linesInSet.forEach(line => {
     const code = line.split(';')[0];
 
-    const mAction = DV_ACTION_ANY_SKILL_RE.exec(code);
-    if (mAction) {
-      const team = mAction[1], playerNum = mAction[2], skill = mAction[3], evaluation = mAction[5];
-      if (evaluation === '#' || evaluation === '=') {
-        lastTeam = team; lastNumber = parseInt(playerNum, 10); lastEval = evaluation; lastSkill = skill;
+    if (!locked) {
+      const mAction = DV_ACTION_ANY_SKILL_RE.exec(code);
+      if (mAction) {
+        const team = mAction[1], playerNum = mAction[2], skill = mAction[3], evaluation = mAction[5];
+        if (evaluation === '#' || evaluation === '=') {
+          lastTeam = team; lastNumber = parseInt(playerNum, 10); lastEval = evaluation; lastSkill = skill;
+          if (DV_RALLY_ENDING_SHARP_SKILLS.has(skill)) {
+            locked = true;
+          }
+        }
       }
     }
 
@@ -1303,6 +1321,7 @@ function dvAnalyzeScoreProgression(linesInSet, ownMarker) {
     }
     points.push({ own, opponent, scoringTeam, scorerNumber, byError, skill: skillUsed, opponentScorerNumber });
     lastTeam = null; lastNumber = null; lastEval = null; lastSkill = null;
+    locked = false;
   });
   return points;
 }
