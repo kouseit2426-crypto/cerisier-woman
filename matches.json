@@ -1,5 +1,15 @@
 [
   {
+    "matchDate": "26/09/2026",
+    "opponent": "三菱UFJ銀行",
+    "dataFile": "2026-09-26_三菱UFJ銀行.json"
+  },
+  {
+    "matchDate": "26/09/2026",
+    "opponent": "東京サンビームズ",
+    "dataFile": "2026-09-26_東京サンビームズ.json"
+  },
+  {
     "matchDate": "19/09/2026",
     "opponent": "順天堂大学",
     "dataFile": "2026-09-19_順天堂大学.json"
