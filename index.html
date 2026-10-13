@@ -157,6 +157,18 @@
   .player-chip.team-chip { font-weight: 600; border-color: var(--series-orange); color: var(--series-orange); }
   .player-chip.team-chip.selected { background: var(--series-orange); border-color: var(--series-orange); color: #fff; }
 
+  /* 選手別スタッツ／選手比較の「合計・1セット目・2セット目…」切り替えボタン（2026-10-13追加）。
+     .player-chip と見た目は同じだが、選手チップを選び直した時に選択状態が巻き込まれて
+     消えないよう、別クラスにしてある */
+  .set-filter-chip {
+    font-family: inherit; font-size: 13.5px; cursor: pointer;
+    padding: 8px 16px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--page-plane);
+    color: var(--text-primary);
+  }
+  .set-filter-chip:hover { background: var(--grid); }
+  .set-filter-chip.selected { background: var(--series-blue); border-color: var(--series-blue); color: #fff; }
+
   .video-clip-groups { display: flex; flex-wrap: wrap; gap: 10px; }
   .video-clip-list { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
   .video-clip-link {
@@ -394,6 +406,13 @@
   </div>
 
   <div class="page active" id="page1">
+    <div class="card" id="setFilterCard" style="display:none">
+      <div class="sidebar-label">表示するセット</div>
+      <div class="player-grid" id="setFilterButtons"></div>
+      <p class="hint" id="setFilterHint" style="display:none;margin-bottom:0">
+        ※ローテーション別は選手ごとのセット別データがないため、「合計」を選んだ時だけ表示されます。
+      </p>
+    </div>
     <div class="card" id="detailCard">
       <div class="detail-header">
         <h2 id="detailName"></h2>
@@ -1767,11 +1786,12 @@ function markSelected(chipEl) {
   chipEl.classList.add('selected');
 }
 
-function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
+function showDetail(name, subLabel, totalStats, setRows, rotationRows, scopeLabel) {
   document.getElementById('detailCard').style.display = 'block';
   document.getElementById('detailCard2').style.display = 'block';
   document.getElementById('detailName').textContent = name;
   document.getElementById('detailNumber').textContent = subLabel;
+  applyDetailScopeLabel(scopeLabel || '全セット合計');
 
   document.getElementById('detailTiles').innerHTML = `
     <div class="stat-tile"><div class="k">打数</div><div class="v">${totalStats.attempts}</div></div>
@@ -1905,29 +1925,99 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows) {
 
 let selectedPlayerNumbers = new Set();
 
+// ==================== 選手別スタッツ／選手比較：セットごとの切り替え（2026-10-13追加） ====================
+// 'all' = 合計（これまで通り）、1以上の数 = そのセット番号だけ。
+// 複数試合を選んでいる時は、選んだ各試合の「N セット目」を合算して表示する。
+let playerSetFilter = 'all';
+
+// 見出しの「（全セット合計）」を、選んでいる範囲の呼び名（「第1セット」など）に差し替える。
+// 元の文言はdata-origに覚えておき、「合計」に戻した時にちゃんと元に戻せるようにする。
+function applyDetailScopeLabel(scopeLabel) {
+  document.querySelectorAll('#detailCard .section-label, #detailCard2 .section-label').forEach(el => {
+    if (!el.dataset.orig) el.dataset.orig = el.textContent;
+    el.textContent = el.dataset.orig.replace('全セット合計', scopeLabel);
+  });
+}
+
+function setFilterScopeLabel() {
+  return playerSetFilter === 'all' ? '全セット合計' : `第${playerSetFilter}セット`;
+}
+
+function playerStatsInSet(dataObj, number, setNumber) {
+  const setObj = (dataObj.sets || []).find(s => s.setNumber === setNumber);
+  if (!setObj) return null;
+  return (setObj.players || []).find(p => p.number === number) || null;
+}
+
+function hideSetFilterBar() {
+  document.getElementById('setFilterCard').style.display = 'none';
+}
+
+function renderSetFilterBar(maxSets) {
+  const card = document.getElementById('setFilterCard');
+  if (maxSets < 1) { card.style.display = 'none'; return; }
+  if (playerSetFilter !== 'all' && playerSetFilter > maxSets) playerSetFilter = 'all';
+  card.style.display = '';
+  const wrap = document.getElementById('setFilterButtons');
+  wrap.innerHTML = '';
+  const addBtn = (label, value) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'set-filter-chip' + (playerSetFilter === value ? ' selected' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => selectPlayerSetFilter(value));
+    wrap.appendChild(b);
+  };
+  addBtn('合計', 'all');
+  for (let n = 1; n <= maxSets; n++) addBtn(`${n}セット目`, n);
+  document.getElementById('setFilterHint').style.display = playerSetFilter === 'all' ? 'none' : '';
+}
+
+function selectPlayerSetFilter(value) {
+  playerSetFilter = value;
+  renderSingleMatchPlayerView();
+}
+
+// 選んだセットに出場記録がない選手だけ選ばれている時の表示
+function showNoRecordDetail(name, message) {
+  document.getElementById('detailCard').style.display = 'block';
+  document.getElementById('detailCard2').style.display = 'none';
+  document.getElementById('detailName').textContent = name;
+  document.getElementById('detailNumber').textContent = message;
+  document.getElementById('detailTiles').innerHTML = '';
+  document.getElementById('detailSetBody').innerHTML =
+    '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
+  document.getElementById('detailHardSection').style.display = 'none';
+  document.getElementById('detailFeintSection').style.display = 'none';
+  document.getElementById('detailRotationSection').style.display = 'none';
+}
+
 function renderSingleMatchPlayerView() {
   const nums = Array.from(selectedPlayerNumbers);
   if (nums.length === 0) {
+    hideSetFilterBar();
     document.getElementById('detailCard').style.display = 'none';
     document.getElementById('detailCard2').style.display = 'none';
     document.getElementById('comparisonCard').style.display = 'none';
   } else if (selectedMatchKeys.size >= 2) {
     renderCombinedPlayerView(nums);
   } else if (nums.length === 1) {
+    renderSetFilterBar((DATA.sets || []).length);
     document.getElementById('comparisonCard').style.display = 'none';
     const number = nums[0];
     const p = DATA.total.find(pp => pp.number === number);
     if (!p) {
-      document.getElementById('detailCard').style.display = 'block';
-      document.getElementById('detailCard2').style.display = 'none';
-      document.getElementById('detailName').textContent = ROSTER[number] || `#${number}`;
-      document.getElementById('detailNumber').textContent = `#${number} ／ この試合の出場記録がありません`;
-      document.getElementById('detailTiles').innerHTML = '';
-      document.getElementById('detailSetBody').innerHTML =
-        '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
-      document.getElementById('detailHardSection').style.display = 'none';
-      document.getElementById('detailFeintSection').style.display = 'none';
-      document.getElementById('detailRotationSection').style.display = 'none';
+      showNoRecordDetail(ROSTER[number] || `#${number}`, `#${number} ／ この試合の出場記録がありません`);
+      return;
+    }
+    if (playerSetFilter !== 'all') {
+      const sp = playerStatsInSet(DATA, number, playerSetFilter);
+      if (!sp) {
+        showNoRecordDetail(p.name, `#${number} ／ 第${playerSetFilter}セットの出場記録がありません`);
+        return;
+      }
+      showDetail(p.name, `#${p.number} ／ 第${playerSetFilter}セット`, sp,
+        [{ ...sp, setNumber: playerSetFilter }], null, setFilterScopeLabel());
       return;
     }
     const setRows = DATA.sets.map(s => {
@@ -1937,6 +2027,7 @@ function renderSingleMatchPlayerView() {
     const rotationRows = (DATA.rotation.byPlayer && DATA.rotation.byPlayer[number]) || null;
     showDetail(p.name, `#${p.number} ／ 全セット合計`, p, setRows, rotationRows);
   } else {
+    renderSetFilterBar((DATA.sets || []).length);
     document.getElementById('detailCard').style.display = 'none';
     document.getElementById('detailCard2').style.display = 'none';
     showComparison(nums);
@@ -1952,37 +2043,42 @@ function renderCombinedPlayerView(nums) {
     .map(k => MATCHES.find(m => matchKey(m) === k))
     .filter(Boolean);
   if (!entries.length) return;
+  const filterAtStart = playerSetFilter;
   Promise.all(entries.map(fetchMatchData)).then(dataList => {
-    // 非同期で待っている間に選手選択が変わっていたら、古い結果は描画しない
+    // 非同期で待っている間に選手選択やセット選択が変わっていたら、古い結果は描画しない
     const stillSame = Array.from(selectedPlayerNumbers).sort().join(',') === nums.slice().sort().join(',');
-    if (!stillSame || selectedMatchKeys.size < 2) return;
+    if (!stillSame || selectedMatchKeys.size < 2 || playerSetFilter !== filterAtStart) return;
+
+    // 選んだ試合のうち一番セット数が多い試合に合わせて、「N セット目」ボタンを出す
+    const maxSets = Math.max(0, ...dataList.map(d => Math.max(0, ...(d.sets || []).map(s => s.setNumber))));
+    renderSetFilterBar(maxSets);
+    const filter = playerSetFilter;
 
     if (nums.length === 1) {
       const number = nums[0];
       document.getElementById('comparisonCard').style.display = 'none';
-      const perMatchStats = dataList.map(d => (d.total || []).find(p => p.number === number) || null);
+      const perMatchStats = dataList.map(d => filter === 'all'
+        ? ((d.total || []).find(p => p.number === number) || null)
+        : playerStatsInSet(d, number, filter));
       const combined = combineStatsList(perMatchStats);
       const name = ROSTER[number] || `#${number}`;
       if (!combined) {
-        document.getElementById('detailCard').style.display = 'block';
-        document.getElementById('detailCard2').style.display = 'none';
-        document.getElementById('detailName').textContent = name;
-        document.getElementById('detailNumber').textContent = `#${number} ／ 選んだ${entries.length}試合に出場記録がありません`;
-        document.getElementById('detailTiles').innerHTML = '';
-        document.getElementById('detailSetBody').innerHTML =
-          '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
-        document.getElementById('detailHardSection').style.display = 'none';
-        document.getElementById('detailFeintSection').style.display = 'none';
-        document.getElementById('detailRotationSection').style.display = 'none';
+        showNoRecordDetail(name, filter === 'all'
+          ? `#${number} ／ 選んだ${entries.length}試合に出場記録がありません`
+          : `#${number} ／ 選んだ${entries.length}試合の第${filter}セットに出場記録がありません`);
         return;
       }
       const rows = entries.map((entry, i) => {
         const sp = perMatchStats[i];
         return sp ? { ...sp, matchLabel: `${formatMatchDate(entry.matchDate)} ${entry.opponent}` } : null;
       });
-      const rotationRowsList = dataList.map(d => (d.rotation.byPlayer && d.rotation.byPlayer[number]) || null);
-      const combinedRotationRows = combinePlayerRotationRows(rotationRowsList);
-      showDetail(name, `#${number} ／ 選んだ${entries.length}試合の合計`, combined, rows, combinedRotationRows);
+      if (filter === 'all') {
+        const rotationRowsList = dataList.map(d => (d.rotation.byPlayer && d.rotation.byPlayer[number]) || null);
+        const combinedRotationRows = combinePlayerRotationRows(rotationRowsList);
+        showDetail(name, `#${number} ／ 選んだ${entries.length}試合の合計`, combined, rows, combinedRotationRows);
+      } else {
+        showDetail(name, `#${number} ／ 選んだ${entries.length}試合の第${filter}セット`, combined, rows, null, setFilterScopeLabel());
+      }
     } else {
       document.getElementById('detailCard').style.display = 'none';
       document.getElementById('detailCard2').style.display = 'none';
@@ -1992,15 +2088,28 @@ function renderCombinedPlayerView(nums) {
 }
 
 function showCombinedComparison(nums, dataList, matchCount) {
+  const filter = playerSetFilter;
+  const missing = [];
   const players = nums.map(n => {
-    const perMatchStats = dataList.map(d => (d.total || []).find(p => p.number === n) || null);
+    const perMatchStats = dataList.map(d => filter === 'all'
+      ? ((d.total || []).find(p => p.number === n) || null)
+      : playerStatsInSet(d, n, filter));
     const combined = combineStatsList(perMatchStats);
-    if (!combined) return null;
+    if (!combined) { missing.push(ROSTER[n] || `#${n}`); return null; }
     return { ...combined, number: n, name: ROSTER[n] || `#${n}` };
   }).filter(Boolean);
   document.getElementById('comparisonCard').style.display = 'block';
-  document.getElementById('comparisonTitle').textContent = `選手比較（${players.length}人／選んだ${matchCount}試合の合計）`;
-  document.getElementById('comparisonBody').innerHTML = comparisonTableHtml(players);
+  document.getElementById('comparisonTitle').textContent = filter === 'all'
+    ? `選手比較（${players.length}人／選んだ${matchCount}試合の合計）`
+    : `選手比較（${players.length}人／選んだ${matchCount}試合の第${filter}セット）`;
+  document.getElementById('comparisonBody').innerHTML =
+    comparisonMissingHintHtml(missing, filter) + comparisonTableHtml(players, setFilterScopeLabel());
+}
+
+// 選んだセットに出場記録のない選手がいる時の、控えめな一行メモ
+function comparisonMissingHintHtml(missingNames, filter) {
+  if (filter === 'all' || !missingNames.length) return '';
+  return `<p class="hint">第${filter}セットに出場記録がないため表示していません： ${missingNames.map(escapeHtml).join('、')}</p>`;
 }
 
 function refreshMatchComparisonIfNeeded() {
@@ -2032,7 +2141,8 @@ function comparisonSectionHtml(title, colspan) {
   return `<tr class="section-row"><td colspan="${colspan}">${escapeHtml(title)}</td></tr>`;
 }
 
-function comparisonTableHtml(players) {
+function comparisonTableHtml(players, scopeLabel) {
+  scopeLabel = scopeLabel || '全セット合計';
   const colspan = players.length + 1;
   const hasBlock = players.some(p => p.block_attempts > 0);
   const hasServe = players.some(p => p.serve_attempts > 0);
@@ -2045,7 +2155,7 @@ function comparisonTableHtml(players) {
   });
   html += '</tr></thead><tbody>';
 
-  html += comparisonSectionHtml('スパイク（全セット合計）', colspan);
+  html += comparisonSectionHtml('スパイク（' + scopeLabel + '）', colspan);
   html += comparisonRowHtml('打数', players, p => p.attempts, false);
   html += comparisonRowHtml('得点', players, p => p.points, false);
   html += comparisonRowHtml('ミス', players, p => p.errors, false);
@@ -2054,7 +2164,7 @@ function comparisonTableHtml(players) {
   html += comparisonRowHtml('効果率', players, p => p.efficiency, true);
 
   if (hasBlock) {
-    html += comparisonSectionHtml('ブロック（全セット合計）', colspan);
+    html += comparisonSectionHtml('ブロック（' + scopeLabel + '）', colspan);
     html += comparisonRowHtml('本数', players, p => p.block_attempts, false);
     html += comparisonRowHtml('得点', players, p => p.block_points, false);
     html += comparisonRowHtml('ワンチ', players, p => p.block_touch_own + p.block_touch_opp, false);
@@ -2062,7 +2172,7 @@ function comparisonTableHtml(players) {
   }
 
   if (hasServe) {
-    html += comparisonSectionHtml('サーブ（全セット合計）', colspan);
+    html += comparisonSectionHtml('サーブ（' + scopeLabel + '）', colspan);
     html += comparisonRowHtml('打数', players, p => p.serve_attempts, false);
     html += comparisonRowHtml('エース', players, p => p.serve_aces, false);
     html += comparisonRowHtml('ミス', players, p => p.serve_errors, false);
@@ -2073,7 +2183,7 @@ function comparisonTableHtml(players) {
   }
 
   if (hasReceive) {
-    html += comparisonSectionHtml('レシーブ（全セット合計）', colspan);
+    html += comparisonSectionHtml('レシーブ（' + scopeLabel + '）', colspan);
     html += comparisonRowHtml('本数', players, p => p.receive_attempts, false);
     html += comparisonRowHtml('Aパス', players, p => p.receive_a, false);
     html += comparisonRowHtml('Bパス', players, p => p.receive_b, false);
@@ -2090,12 +2200,23 @@ function comparisonTableHtml(players) {
 }
 
 function showComparison(nums) {
+  const filter = playerSetFilter;
+  const missing = [];
   const players = nums
-    .map(n => DATA.total.find(pp => pp.number === n))
+    .map(n => {
+      const p = filter === 'all'
+        ? DATA.total.find(pp => pp.number === n)
+        : playerStatsInSet(DATA, n, filter);
+      if (!p) missing.push(ROSTER[n] || `#${n}`);
+      return p;
+    })
     .filter(Boolean);
   document.getElementById('comparisonCard').style.display = 'block';
-  document.getElementById('comparisonTitle').textContent = `選手比較（${players.length}人）`;
-  document.getElementById('comparisonBody').innerHTML = comparisonTableHtml(players);
+  document.getElementById('comparisonTitle').textContent = filter === 'all'
+    ? `選手比較（${players.length}人）`
+    : `選手比較（${players.length}人／第${filter}セット）`;
+  document.getElementById('comparisonBody').innerHTML =
+    comparisonMissingHintHtml(missing, filter) + comparisonTableHtml(players, setFilterScopeLabel());
 }
 
 function rotationTableHtml(rows) {
@@ -2759,6 +2880,7 @@ function selectTeam(chipEl) {
   clearDropZoneStatus();
   markSelected(chipEl);
   document.getElementById('comparisonCard').style.display = 'none';
+  hideSetFilterBar();
   showDetail(DATA.team.name, 'チーム合計 ／ 全セット合計', DATA.team.total, DATA.team.sets);
   refreshMatchComparisonIfNeeded();
 }
