@@ -579,6 +579,22 @@
       <button type="button" class="expand-all-btn" onclick="toggleAllCollapsibles(document.getElementById('page2'), this)">すべて展開</button>
     </div>
 
+    <div class="card" id="scoreProgressionCard">
+      <div class="collapsible" id="scoreProgressionSection" style="margin-top:0">
+        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+          <h3 class="section-label" style="margin-top:0">セット経過（得点推移）</h3>
+          <span class="collapse-arrow">▾</span>
+        </button>
+        <div class="collapsible-body">
+          <p class="hint" style="margin-top:-6px">
+            各セットの最終スコアです。セットのボタンを押すと、ラリーが決まるたびのスコアの推移をグラフで見られます。
+          </p>
+          <div class="player-grid" id="scoreProgressionSetButtons"></div>
+          <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="collapsible" id="sideOutBreakSection" style="margin-top:0">
         <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
@@ -624,22 +640,8 @@
       </div>
     </div>
 
-    <div class="card" id="scoreProgressionCard">
-      <div class="collapsible closed" id="scoreProgressionSection" style="margin-top:0">
-        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
-          <h3 class="section-label" style="margin-top:0">セット経過（得点推移）</h3>
-          <span class="collapse-arrow">▾</span>
-        </button>
-        <div class="collapsible-body">
-          <p class="hint" style="margin-top:-6px">
-            ラリーが決まるたびに、その時点のスコアをグラフにしています。セットを選んでください。
-          </p>
-          <div class="player-grid" id="scoreProgressionSetButtons"></div>
-          <div id="scoreProgressionChartArea" style="margin-top:16px"></div>
-        </div>
-      </div>
-
-      <div class="collapsible closed" id="runHighlightsSection">
+    <div class="card" id="runHighlightsCard">
+      <div class="collapsible closed" id="runHighlightsSection" style="margin-top:0">
         <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
           <h3 class="section-label" id="runHighlightsLabel">セットごとの流れハイライト</h3>
           <span class="collapse-arrow">▾</span>
@@ -2381,6 +2383,12 @@ function showStartingLineups(bySet) {
   document.getElementById('startingLineupBody').innerHTML = startingLineupHtml(withLineup[0].startingLineup);
 }
 
+// セットの最終スコア（自チーム-相手）。得点推移が空なら null
+function setFinalScoreText(s) {
+  const last = s && s.points && s.points[s.points.length - 1];
+  return last ? `${last.own}-${last.opponent}` : null;
+}
+
 function selectScoreProgressionSet(s, chipEl) {
   document.querySelectorAll('#scoreProgressionSetButtons .player-chip').forEach(c => c.classList.remove('selected'));
   chipEl.classList.add('selected');
@@ -2395,7 +2403,8 @@ function showScoreProgressionCharts() {
   DATA.scoreProgression.bySet.forEach((s, idx) => {
     const chip = document.createElement('button');
     chip.className = 'player-chip';
-    chip.textContent = `第${s.setNumber}セット`;
+    const sc = setFinalScoreText(s);
+    chip.textContent = sc ? `${s.setNumber}セット目　${sc}` : `${s.setNumber}セット目`;
     chip.addEventListener('click', () => selectScoreProgressionSet(s, chip));
     if (idx === 0) chip.classList.add('selected');
     btnEl.appendChild(chip);
@@ -2425,7 +2434,7 @@ function showScoreProgressionChartsCombined(entries, dataList) {
   dataList.forEach(d => {
     (d.scoreProgression.bySet || []).forEach(s => {
       items.push({
-        label: `${d.opponent}（${formatMatchDate(d.matchDate)}）第${s.setNumber}セット`,
+        label: `${d.opponent}（${formatMatchDate(d.matchDate)}）${s.setNumber}セット目${setFinalScoreText(s) ? '　' + setFinalScoreText(s) : ''}`,
         points: s.points,
         setLabel: `${d.opponent} 第${s.setNumber}セット`,
         teamLabel: d.teamLabel,
