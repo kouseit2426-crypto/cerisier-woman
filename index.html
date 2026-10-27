@@ -1870,7 +1870,7 @@ function renderDetailSection(key) {
       if (sp && sp.attempts > 0) {
         const tr = document.createElement('tr');
         const rowLabel = sp.matchLabel ? escapeHtml(sp.matchLabel) : `第${sp.setNumber}セット`;
-        tr.innerHTML = `<td>${rowLabel}</td><td>${sp.attempts}</td><td>${sp.points}</td><td>${sp.errors}</td><td>${sp.blocked}</td><td>${pct(sp.kill_rate)}</td>`;
+        tr.innerHTML = `<td>${rowLabel}</td><td>${sp.attempts}</td><td>${sp.points}</td><td>${sp.errors}</td><td>${sp.blocked}</td><td>${pct(sp.kill_rate)}</td><td>${pct(sp.efficiency)}</td>`;
         setBody.appendChild(tr);
       }
     });
