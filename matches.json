@@ -1,5 +1,10 @@
 [
   {
+    "matchDate": "24/10/2026",
+    "opponent": "東京ガスエコモ",
+    "dataFile": "2026-10-24_東京ガスエコモ.json"
+  },
+  {
     "matchDate": "11/10/2026",
     "opponent": "江戸川大学",
     "dataFile": "2026-10-11_江戸川大学.json"
