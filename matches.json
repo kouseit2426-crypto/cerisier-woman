@@ -1,87 +1,102 @@
 [
   {
-    "matchDate": "24/10/2026",
-    "opponent": "東京ガスエコモ",
-    "dataFile": "2026-10-24_東京ガスエコモ.json"
+    "matchDate": "18/10/2026",
+    "opponent": "VC山梨",
+    "dataFile": "2026-10-18_VC山梨.json"
   },
   {
-    "matchDate": "11/10/2026",
-    "opponent": "江戸川大学",
-    "dataFile": "2026-10-11_江戸川大学.json"
+    "matchDate": "22/09/2026",
+    "opponent": "厚木バイキング",
+    "dataFile": "2026-09-22_厚木バイキング.json"
   },
   {
-    "matchDate": "26/09/2026",
-    "opponent": "三菱UFJ銀行",
-    "dataFile": "2026-09-26_三菱UFJ銀行.json"
+    "matchDate": "20/09/2026",
+    "opponent": "富士通カワサキレッドスピリッツ",
+    "dataFile": "2026-09-20_富士通カワサキレッドスピリッツ.json"
   },
   {
-    "matchDate": "26/09/2026",
-    "opponent": "東京サンビームズ",
-    "dataFile": "2026-09-26_東京サンビームズ.json"
+    "matchDate": "20/09/2026",
+    "opponent": "足利大付属高校",
+    "dataFile": "2026-09-20_足利大付属高校.json"
   },
   {
-    "matchDate": "19/09/2026",
-    "opponent": "順天堂大学",
-    "dataFile": "2026-09-19_順天堂大学.json"
+    "matchDate": "13/09/2026",
+    "opponent": "JUWA",
+    "dataFile": "2026-09-13_JUWA.json"
   },
   {
-    "matchDate": "06/09/2026",
-    "opponent": "文京学院高校",
-    "dataFile": "2026-09-06_文京学院高校.json"
+    "matchDate": "05/09/2026",
+    "opponent": "フォーバルボンズ",
+    "dataFile": "2026-09-05_フォーバルボンズ.json"
   },
   {
-    "matchDate": "30/08/2026",
-    "opponent": "千葉ベルズ",
-    "dataFile": "2026-08-30_千葉ベルズ.json"
-  },
-  {
-    "matchDate": "25/08/2026",
-    "opponent": "大妻女子大学",
-    "dataFile": "2026-08-25_大妻女子大学.json"
-  },
-  {
-    "matchDate": "11/08/2026",
-    "opponent": "國學院大學",
-    "dataFile": "2026-08-11_國學院大學.json"
+    "matchDate": "05/09/2026",
+    "opponent": "東陵東京クラブ",
+    "dataFile": "2026-09-05_東陵東京クラブ.json"
   },
   {
     "matchDate": "09/08/2026",
-    "opponent": "江戸川大学",
-    "dataFile": "2026-08-09_江戸川大学.json"
+    "opponent": "TM東京",
+    "dataFile": "2026-08-09_TM東京.json"
   },
   {
     "matchDate": "09/08/2026",
-    "opponent": "早稲田大学",
-    "dataFile": "2026-08-09_早稲田大学.json"
+    "opponent": "埼玉アザレア",
+    "dataFile": "2026-08-09_埼玉アザレア.json"
   },
   {
-    "matchDate": "28/07/2026",
-    "opponent": "嘉悦大学",
-    "dataFile": "2026-07-28_嘉悦大学.json"
+    "matchDate": "09/08/2026",
+    "opponent": "大東文化大学",
+    "dataFile": "2026-08-09_大東文化大学.json"
   },
   {
-    "matchDate": "19/07/2026",
-    "opponent": "江戸川大学",
-    "dataFile": "2026-07-19_江戸川大学.json"
+    "matchDate": "09/08/2026",
+    "opponent": "中央学院大学",
+    "dataFile": "2026-08-09_中央学院大学.json"
   },
   {
-    "matchDate": "05/07/2026",
-    "opponent": "トヨタ自動車",
-    "dataFile": "2026-07-05_トヨタ自動車.json"
+    "matchDate": "09/08/2026",
+    "opponent": "東京ヴェルディ",
+    "dataFile": "2026-08-09_東京ヴェルディ.json"
   },
   {
-    "matchDate": "04/07/2026",
-    "opponent": "トヨタ自動車",
-    "dataFile": "2026-07-04_トヨタ自動車.json"
+    "matchDate": "09/08/2026",
+    "opponent": "日本大学",
+    "dataFile": "2026-08-09_日本大学.json"
   },
   {
-    "matchDate": "04/07/2026",
-    "opponent": "三菱UFJ銀行",
-    "dataFile": "2026-07-04_三菱UFJ銀行.json"
+    "matchDate": "02/08/2026",
+    "opponent": "新潟国体",
+    "dataFile": "2026-08-02_新潟国体.json"
   },
   {
-    "matchDate": "04/07/2026",
-    "opponent": "千葉ベルズ",
-    "dataFile": "2026-07-04_千葉ベルズ.json"
+    "matchDate": "02/08/2026",
+    "opponent": "福島国体",
+    "dataFile": "2026-08-02_福島国体.json"
+  },
+  {
+    "matchDate": "01/08/2026",
+    "opponent": "VC山梨",
+    "dataFile": "2026-08-01_VC山梨.json"
+  },
+  {
+    "matchDate": "01/08/2026",
+    "opponent": "東京大学",
+    "dataFile": "2026-08-01_東京大学.json"
+  },
+  {
+    "matchDate": "26/07/2026",
+    "opponent": "MOFA",
+    "dataFile": "2026-07-26_MOFA.json"
+  },
+  {
+    "matchDate": "26/07/2026",
+    "opponent": "暁クラブ",
+    "dataFile": "2026-07-26_暁クラブ.json"
+  },
+  {
+    "matchDate": "26/07/2026",
+    "opponent": "出光クラブ",
+    "dataFile": "2026-07-26_出光クラブ.json"
   }
 ]
