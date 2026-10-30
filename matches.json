@@ -35,6 +35,11 @@
     "dataFile": "2026-09-05_東陵東京クラブ.json"
   },
   {
+    "matchDate": "23/08/2026",
+    "opponent": "埼玉国体",
+    "dataFile": "2026-08-23_埼玉国体.json"
+  },
+  {
     "matchDate": "09/08/2026",
     "opponent": "TM東京",
     "dataFile": "2026-08-09_TM東京.json"
