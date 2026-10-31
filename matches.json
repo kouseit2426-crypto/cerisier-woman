@@ -1,5 +1,10 @@
 [
   {
+    "matchDate": "31/10/2026",
+    "opponent": "岩手成年女子選抜",
+    "dataFile": "2026-10-31_岩手成年女子選抜.json"
+  },
+  {
     "matchDate": "24/10/2026",
     "opponent": "東京ガスエコモ",
     "dataFile": "2026-10-24_東京ガスエコモ.json"
