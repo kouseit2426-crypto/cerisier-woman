@@ -2019,6 +2019,7 @@ const TEAM_OV_SECTIONS = [
   ['spike', 'スパイク'], ['hard', '強打'], ['feint', 'フェイント'],
   ['block', 'ブロック'], ['serve', 'サーブ'], ['receive', 'レシーブ'],
 ];
+const TEAM_OV_FIXED = new Set(['hard', 'feint']);
 const teamOvScope = { spike: 'all', hard: 'all', feint: 'all', block: 'all', serve: 'all', receive: 'all' };
 let teamOvCtx = null;
 
@@ -2028,9 +2029,9 @@ function selectTeamOverviewScope(key, value) {
 }
 
 function renderTeamOverviewSection(key) {
-  const el = document.getElementById('teamOv-' + key);
+  const wrap = document.getElementById('teamOv-' + key);
   const ctx = teamOvCtx;
-  if (!el || !ctx) return;
+  if (!wrap || !ctx) return;
   let scope = teamOvScope[key];
   if (scope !== 'all' && scope > ctx.maxSets) { scope = 'all'; teamOvScope[key] = 'all'; }
   const stats = scope === 'all' ? ctx.total : (ctx.statsFor(scope) || emptyStatsObj());
@@ -2038,8 +2039,9 @@ function renderTeamOverviewSection(key) {
   const bar = ctx.maxSets >= 1
     ? `<div class="section-set-bar">${setScopeButtonsHtml(ctx.maxSets, scope, a => `selectTeamOverviewScope('${key}', ${a})`)}</div>`
     : '';
-  el.innerHTML = `<h4 class="section-label" style="margin:0 0 8px;font-size:15px">${title}（${scopeLabelOf(scope)}）</h4>`
-    + bar + `<div class="stat-tiles">${detailTilesHtml(key, stats)}</div>`;
+  // 見出し（開閉ボタン）は作り直さない：セットを切り替えても、開閉の状態はそのまま残す
+  wrap.querySelector('.section-label').textContent = `${title}（${scopeLabelOf(scope)}）`;
+  wrap.querySelector('.collapsible-body').innerHTML = bar + `<div class="stat-tiles">${detailTilesHtml(key, stats)}</div>`;
 }
 
 // ctx = { total, maxSets, statsFor(n), label }
@@ -2048,12 +2050,28 @@ function renderTeamOverview(ctx) {
   document.getElementById('teamOverviewLabel').textContent = ctx.label;
   const t = ctx.total;
   const body = document.getElementById('teamOverviewBody');
+  // 開閉の状態は、試合を選び直しても引き継ぐ
+  const closedBefore = {};
+  TEAM_OV_SECTIONS.forEach(([key]) => {
+    const el = document.getElementById('teamOv-' + key);
+    if (el) closedBefore[key] = el.classList.contains('closed');
+  });
   body.innerHTML = TEAM_OV_SECTIONS.map(([key]) => {
     const on = key === 'block' ? t.block_attempts > 0
       : key === 'serve' ? t.serve_attempts > 0
       : key === 'receive' ? t.receive_attempts > 0
       : t.attempts > 0;
-    return on ? `<div id="teamOv-${key}" style="margin-bottom:8px"></div>` : '';
+    if (!on) return '';
+    // 強打・フェイントは、これまで通り閉じられない（常に表示）
+    if (TEAM_OV_FIXED.has(key)) {
+      return `<div id="teamOv-${key}" style="margin:0 0 6px">`
+        + `<h4 class="section-label" style="font-size:15px;margin:0"></h4>`
+        + `<div class="collapsible-body"></div></div>`;
+    }
+    return `<div class="collapsible${closedBefore[key] ? ' closed' : ''}" id="teamOv-${key}" style="margin:0 0 6px">`
+      + `<button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">`
+      + `<h4 class="section-label" style="font-size:15px"></h4><span class="collapse-arrow">▾</span></button>`
+      + `<div class="collapsible-body"></div></div>`;
   }).join('');
   TEAM_OV_SECTIONS.forEach(([key]) => renderTeamOverviewSection(key));
 }
