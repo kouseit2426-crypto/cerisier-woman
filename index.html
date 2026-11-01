@@ -548,6 +548,19 @@
       </div>
     </div>
 
+    <div class="card collapsible closed" id="teamOverviewCard">
+      <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+        <h3 class="section-label" id="teamOverviewLabel" style="margin-top:0">チーム全体（この試合）</h3>
+        <span class="collapse-arrow">▾</span>
+      </button>
+      <div class="collapsible-body">
+        <p class="hint" style="margin-top:-6px">
+          選手を選ばなくても見られる、チーム全体の成績です。項目ごとに「合計」か「Nセット目」を選べます。
+        </p>
+        <div id="teamOverviewBody"></div>
+      </div>
+    </div>
+
     <div class="card collapsible closed" id="startingLineupsCard">
       <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
         <h3 class="section-label" style="margin-top:0">スタメン（セット開始時点）</h3>
@@ -1824,6 +1837,58 @@ function setScopeButtonsHtml(maxSets, current, onclickFn) {
   return html;
 }
 
+// 項目ごとの成績タイル（選手／チーム詳細と、チーム全体カードで共通）
+function detailTilesHtml(key, stats) {
+  if (key === 'spike') return `
+      <div class="stat-tile"><div class="k">打数</div><div class="v">${stats.attempts}</div></div>
+      <div class="stat-tile"><div class="k">得点</div><div class="v">${stats.points}</div></div>
+      <div class="stat-tile"><div class="k">ミス</div><div class="v">${stats.errors}</div></div>
+      <div class="stat-tile"><div class="k">被ブロック</div><div class="v">${stats.blocked}</div></div>
+      <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(stats.kill_rate)}</div></div>
+      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(stats.efficiency)}</div></div>
+  `;
+  if (key === 'block') {
+    const touch = stats.block_touch_own + stats.block_touch_opp;
+    return `
+      <div class="stat-tile"><div class="k">本数</div><div class="v">${stats.block_attempts}</div></div>
+      <div class="stat-tile"><div class="k">得点</div><div class="v">${stats.block_points}</div></div>
+      <div class="stat-tile"><div class="k">ワンチ</div><div class="v">${touch}</div></div>
+      <div class="stat-tile"><div class="k">自コート／相手コート</div><div class="v" style="font-size:16px">${stats.block_touch_own} / ${stats.block_touch_opp}</div></div>
+      <div class="stat-tile"><div class="k">失点</div><div class="v">${stats.block_errors}</div></div>
+  `;
+  }
+  if (key === 'serve') return `
+      <div class="stat-tile"><div class="k">打数</div><div class="v">${stats.serve_attempts}</div></div>
+      <div class="stat-tile"><div class="k">エース</div><div class="v">${stats.serve_aces}</div></div>
+      <div class="stat-tile"><div class="k">ミス</div><div class="v">${stats.serve_errors}</div></div>
+      <div class="stat-tile"><div class="k">効果本数</div><div class="v">${stats.serve_half_credit}<div style="font-size:11px;color:var(--text-muted);font-weight:400">＋と／の合計</div></div></div>
+      <div class="stat-tile"><div class="k">エース率</div><div class="v">${pct(stats.serve_ace_rate)}</div></div>
+      <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pct(stats.serve_error_rate)}</div></div>
+      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(stats.serve_efficiency)}</div></div>
+  `;
+  if (key === 'receive') return `
+      <div class="stat-tile"><div class="k">本数</div><div class="v">${stats.receive_attempts}</div></div>
+      <div class="stat-tile"><div class="k">Aパス</div><div class="v">${stats.receive_a}</div></div>
+      <div class="stat-tile"><div class="k">Bパス</div><div class="v">${stats.receive_b}</div></div>
+      <div class="stat-tile"><div class="k">Cパス</div><div class="v">${stats.receive_c}</div></div>
+      <div class="stat-tile"><div class="k">Dパス</div><div class="v">${stats.receive_d}</div></div>
+      <div class="stat-tile"><div class="k">ミス</div><div class="v">${stats.receive_errors}</div></div>
+      <div class="stat-tile"><div class="k">返球率</div><div class="v">${pct(stats.receive_return_rate)}</div></div>
+      <div class="stat-tile"><div class="k">A率</div><div class="v">${pct(stats.receive_a_rate)}</div></div>
+      <div class="stat-tile"><div class="k">AB率</div><div class="v">${pct(stats.receive_ab_rate)}</div></div>
+  `;
+  if (key === 'hard' || key === 'feint') {
+    const t = key;
+    return `
+      <div class="stat-tile"><div class="k">打数</div><div class="v">${stats['tech_'+t+'_attempts'] || 0}</div></div>
+      <div class="stat-tile"><div class="k">得点</div><div class="v">${stats['tech_'+t+'_points'] || 0}</div></div>
+      <div class="stat-tile"><div class="k">ミス</div><div class="v">${stats['tech_'+t+'_errors'] || 0}</div></div>
+      <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(stats['tech_'+t+'_kill_rate'])}</div></div>
+    `;
+  }
+  return '';
+}
+
 function selectDetailSectionScope(key, value) {
   detailSectionScope[key] = value;
   renderDetailSection(key);
@@ -1855,14 +1920,7 @@ function renderDetailSection(key) {
   }
 
   if (key === 'spike') {
-    document.getElementById('detailTiles').innerHTML = `
-      <div class="stat-tile"><div class="k">打数</div><div class="v">${stats.attempts}</div></div>
-      <div class="stat-tile"><div class="k">得点</div><div class="v">${stats.points}</div></div>
-      <div class="stat-tile"><div class="k">ミス</div><div class="v">${stats.errors}</div></div>
-      <div class="stat-tile"><div class="k">被ブロック</div><div class="v">${stats.blocked}</div></div>
-      <div class="stat-tile"><div class="k">決定率</div><div class="v">${pct(stats.kill_rate)}</div></div>
-      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(stats.efficiency)}</div></div>
-    `;
+    document.getElementById('detailTiles').innerHTML = detailTilesHtml('spike', stats);
     document.getElementById('detailSetHeaderLabel').textContent = hasMatchLabels ? '試合' : 'セット';
     const setBody = document.getElementById('detailSetBody');
     setBody.innerHTML = '';
@@ -1882,36 +1940,11 @@ function renderDetailSection(key) {
   } else if (key === 'feint') {
     renderTechSection('feint', 'detailFeintSetHeaderLabel', 'detailFeintTiles', 'detailFeintBody', stats, rows, hasMatchLabels);
   } else if (key === 'block') {
-    const touch = stats.block_touch_own + stats.block_touch_opp;
-    document.getElementById('blockTiles').innerHTML = `
-      <div class="stat-tile"><div class="k">本数</div><div class="v">${stats.block_attempts}</div></div>
-      <div class="stat-tile"><div class="k">得点</div><div class="v">${stats.block_points}</div></div>
-      <div class="stat-tile"><div class="k">ワンチ</div><div class="v">${touch}</div></div>
-      <div class="stat-tile"><div class="k">自コート／相手コート</div><div class="v" style="font-size:16px">${stats.block_touch_own} / ${stats.block_touch_opp}</div></div>
-      <div class="stat-tile"><div class="k">失点</div><div class="v">${stats.block_errors}</div></div>
-    `;
+    document.getElementById('blockTiles').innerHTML = detailTilesHtml('block', stats);
   } else if (key === 'serve') {
-    document.getElementById('serveTiles').innerHTML = `
-      <div class="stat-tile"><div class="k">打数</div><div class="v">${stats.serve_attempts}</div></div>
-      <div class="stat-tile"><div class="k">エース</div><div class="v">${stats.serve_aces}</div></div>
-      <div class="stat-tile"><div class="k">ミス</div><div class="v">${stats.serve_errors}</div></div>
-      <div class="stat-tile"><div class="k">効果本数</div><div class="v">${stats.serve_half_credit}<div style="font-size:11px;color:var(--text-muted);font-weight:400">＋と／の合計</div></div></div>
-      <div class="stat-tile"><div class="k">エース率</div><div class="v">${pct(stats.serve_ace_rate)}</div></div>
-      <div class="stat-tile"><div class="k">ミス率</div><div class="v">${pct(stats.serve_error_rate)}</div></div>
-      <div class="stat-tile"><div class="k">効果率</div><div class="v">${pct(stats.serve_efficiency)}</div></div>
-    `;
+    document.getElementById('serveTiles').innerHTML = detailTilesHtml('serve', stats);
   } else if (key === 'receive') {
-    document.getElementById('receiveTiles').innerHTML = `
-      <div class="stat-tile"><div class="k">本数</div><div class="v">${stats.receive_attempts}</div></div>
-      <div class="stat-tile"><div class="k">Aパス</div><div class="v">${stats.receive_a}</div></div>
-      <div class="stat-tile"><div class="k">Bパス</div><div class="v">${stats.receive_b}</div></div>
-      <div class="stat-tile"><div class="k">Cパス</div><div class="v">${stats.receive_c}</div></div>
-      <div class="stat-tile"><div class="k">Dパス</div><div class="v">${stats.receive_d}</div></div>
-      <div class="stat-tile"><div class="k">ミス</div><div class="v">${stats.receive_errors}</div></div>
-      <div class="stat-tile"><div class="k">返球率</div><div class="v">${pct(stats.receive_return_rate)}</div></div>
-      <div class="stat-tile"><div class="k">A率</div><div class="v">${pct(stats.receive_a_rate)}</div></div>
-      <div class="stat-tile"><div class="k">AB率</div><div class="v">${pct(stats.receive_ab_rate)}</div></div>
-    `;
+    document.getElementById('receiveTiles').innerHTML = detailTilesHtml('receive', stats);
   }
 }
 
@@ -1977,6 +2010,52 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows, ctx) {
   } else {
     errBreakdownEl.style.display = 'none';
   }
+}
+
+// ==================== 「選手別スタッツ」タブの「チーム全体」カード ====================
+// 選手を選ばなくても、その試合（複数試合なら選んだ試合の合計）のチーム全体の成績が見られる。
+// 項目ごとに「合計／Nセット目」を切り替えられる。
+const TEAM_OV_SECTIONS = [
+  ['spike', 'スパイク'], ['hard', '強打'], ['feint', 'フェイント'],
+  ['block', 'ブロック'], ['serve', 'サーブ'], ['receive', 'レシーブ'],
+];
+const teamOvScope = { spike: 'all', hard: 'all', feint: 'all', block: 'all', serve: 'all', receive: 'all' };
+let teamOvCtx = null;
+
+function selectTeamOverviewScope(key, value) {
+  teamOvScope[key] = value;
+  renderTeamOverviewSection(key);
+}
+
+function renderTeamOverviewSection(key) {
+  const el = document.getElementById('teamOv-' + key);
+  const ctx = teamOvCtx;
+  if (!el || !ctx) return;
+  let scope = teamOvScope[key];
+  if (scope !== 'all' && scope > ctx.maxSets) { scope = 'all'; teamOvScope[key] = 'all'; }
+  const stats = scope === 'all' ? ctx.total : (ctx.statsFor(scope) || emptyStatsObj());
+  const title = TEAM_OV_SECTIONS.find(x => x[0] === key)[1];
+  const bar = ctx.maxSets >= 1
+    ? `<div class="section-set-bar">${setScopeButtonsHtml(ctx.maxSets, scope, a => `selectTeamOverviewScope('${key}', ${a})`)}</div>`
+    : '';
+  el.innerHTML = `<h4 class="section-label" style="margin:0 0 8px;font-size:15px">${title}（${scopeLabelOf(scope)}）</h4>`
+    + bar + `<div class="stat-tiles">${detailTilesHtml(key, stats)}</div>`;
+}
+
+// ctx = { total, maxSets, statsFor(n), label }
+function renderTeamOverview(ctx) {
+  teamOvCtx = ctx;
+  document.getElementById('teamOverviewLabel').textContent = ctx.label;
+  const t = ctx.total;
+  const body = document.getElementById('teamOverviewBody');
+  body.innerHTML = TEAM_OV_SECTIONS.map(([key]) => {
+    const on = key === 'block' ? t.block_attempts > 0
+      : key === 'serve' ? t.serve_attempts > 0
+      : key === 'receive' ? t.receive_attempts > 0
+      : t.attempts > 0;
+    return on ? `<div id="teamOv-${key}" style="margin-bottom:8px"></div>` : '';
+  }).join('');
+  TEAM_OV_SECTIONS.forEach(([key]) => renderTeamOverviewSection(key));
 }
 
 let selectedPlayerNumbers = new Set();
@@ -3427,6 +3506,18 @@ function renderMatchSelection() {
   }
 }
 
+// 選んだ試合（1つ以上）のチーム合計・セット別の成績をまとめて「チーム全体」カードに渡す
+function renderTeamOverviewFor(dataList, matchCount) {
+  const total = combineStatsList(dataList.map(d => d.team && d.team.total)) || emptyStatsObj();
+  const maxSets = Math.max(0, ...dataList.map(d => Math.max(0, ...((d.team && d.team.sets) || []).map(x => x.setNumber))));
+  renderTeamOverview({
+    total,
+    maxSets,
+    statsFor: n => combineStatsList(dataList.map(d => ((d.team && d.team.sets) || []).find(x => x.setNumber === n) || null)),
+    label: matchCount >= 2 ? `チーム全体（選んだ${matchCount}試合の合計）` : 'チーム全体（この試合）',
+  });
+}
+
 function showSingleMatch(data, entries, dataList) {
   DATA = data;
   document.getElementById('mainArea').style.display = 'block';
@@ -3450,6 +3541,7 @@ function showSingleMatch(data, entries, dataList) {
   }
   showPage(1);
   renderSingleMatchPlayerView();
+  renderTeamOverviewFor(combined ? dataList : [DATA], combined ? entries.length : 1);
   if (combined) {
     document.getElementById('startingLineupSetButtons').innerHTML = '';
     document.getElementById('startingLineupBody').innerHTML =
