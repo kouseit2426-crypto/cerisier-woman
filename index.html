@@ -265,6 +265,8 @@
   .collapsible.closed .collapse-arrow { transform: rotate(-90deg); }
   .collapsible-body { margin-top: 10px; }
   .collapsible.closed .collapsible-body { display: none; }
+  /* チーム全体カード：スパイクを閉じたら、続く強打・フェイントもいっしょに隠す */
+  #teamOv-spike.closed ~ .ov-follow-spike { display: none; }
   .expand-all-btn {
     border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
     border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; white-space: nowrap;
@@ -2050,7 +2052,7 @@ function renderTeamOverview(ctx) {
   document.getElementById('teamOverviewLabel').textContent = ctx.label;
   const t = ctx.total;
   const body = document.getElementById('teamOverviewBody');
-  // 開閉の状態は、試合を選び直しても引き継ぐ
+  // 開閉の状態は、試合を選び直しても引き継ぐ（はじめて表示するときは、全部閉じた状態）
   const closedBefore = {};
   TEAM_OV_SECTIONS.forEach(([key]) => {
     const el = document.getElementById('teamOv-' + key);
@@ -2062,13 +2064,13 @@ function renderTeamOverview(ctx) {
       : key === 'receive' ? t.receive_attempts > 0
       : t.attempts > 0;
     if (!on) return '';
-    // 強打・フェイントは、これまで通り閉じられない（常に表示）
+    // 強打・フェイントは自分では閉じない。スパイクを閉じるといっしょに隠れる（CSSの.ov-follow-spike）
     if (TEAM_OV_FIXED.has(key)) {
-      return `<div id="teamOv-${key}" style="margin:0 0 6px">`
+      return `<div id="teamOv-${key}" class="ov-follow-spike" style="margin:0 0 6px">`
         + `<h4 class="section-label" style="font-size:15px;margin:0"></h4>`
         + `<div class="collapsible-body"></div></div>`;
     }
-    return `<div class="collapsible${closedBefore[key] ? ' closed' : ''}" id="teamOv-${key}" style="margin:0 0 6px">`
+    return `<div class="collapsible${closedBefore[key] !== false ? ' closed' : ''}" id="teamOv-${key}" style="margin:0 0 6px">`
       + `<button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">`
       + `<h4 class="section-label" style="font-size:15px"></h4><span class="collapse-arrow">▾</span></button>`
       + `<div class="collapsible-body"></div></div>`;
