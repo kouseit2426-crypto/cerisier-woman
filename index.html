@@ -431,15 +431,7 @@
         <button type="button" class="expand-all-btn" style="margin-left:auto" onclick="toggleAllCollapsibles(document.getElementById('page1'), this)">すべて展開</button>
       </div>
 
-      <div class="collapsible" id="playerFeedbackSection" style="margin-top:0">
-        <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
-          <h3 class="section-label">フィードバック（自動）</h3>
-          <span class="collapse-arrow">▾</span>
-        </button>
-        <div class="collapsible-body" id="playerFeedbackBody"></div>
-      </div>
-
-      <div class="collapsible" id="detailSpikeSection">
+      <div class="collapsible" id="detailSpikeSection" style="margin-top:0">
         <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
           <h3 class="section-label">スパイク（全セット合計）</h3>
           <span class="collapse-arrow">▾</span>
@@ -1996,7 +1988,6 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows, ctx) {
     allStats: totalStats,
     rowsAll: setRows,
   };
-  renderPlayerFeedback(totalStats, ctx ? ctx.teamStats : undefined, ctx ? ctx.notes : null);
 
   // 項目ごとの表示／非表示は、いつも「合計」の成績で決める（セットを選んで0本でも項目は消さない）
   const show = (id, on) => { document.getElementById(id).style.display = on ? '' : 'none'; };
@@ -2054,7 +2045,7 @@ function showDetail(name, subLabel, totalStats, setRows, rotationRows, ctx) {
 function fbP(v) { return (v * 100).toFixed(0) + '%'; }
 
 // アナリスト（こうせいさん）が試合を見て書いた所見。試合のJSONの analystNotes に入れておくと表示される：
-//   "analystNotes": { "team": "チーム全体の所見", "players": { "1": "1番の所見", "12": "…" } }
+//   "analystNotes": { "team": "チーム全体の所見" }
 // notes = [{ label: '10/31 岩手成年女子選抜'（複数試合のときだけ）, text }]
 function fbNotesHtml(notes) {
   const list = (notes || []).filter(n => n && n.text && String(n.text).trim());
@@ -2071,140 +2062,6 @@ function fbSection(tagClass, tagLabel, items, ordered) {
   const tag = ordered ? 'ol' : 'ul';
   return `<div class="fb-block"><div class="fb-title"><span class="fb-tag ${tagClass}">${tagLabel}</span></div>`
     + `<${tag} class="fb-list">${items.map(it => `<li>${it}</li>`).join('')}</${tag}></div>`;
-}
-
-// 選手1人（またはチーム合計）の成績 st を、チーム全体の成績 tm と比べて、良い点・課題を出す
-function playerFeedback(st, tm) {
-  const good = [], issue = [];
-  const teamOk = (key, min) => !!tm && (tm[key] || 0) >= min;
-
-  // --- スパイク ---
-  if (st.attempts >= 8) {
-    const kr = st.kill_rate;
-    const tkr = teamOk('attempts', 20) ? tm.kill_rate : null;
-    const ref = `（${st.points}/${st.attempts}本${tkr !== null ? `、チーム平均${fbP(tkr)}` : ''}）`;
-    if (kr !== null && (tkr !== null ? kr >= tkr + 0.08 : kr >= 0.45)) {
-      good.push({ sev: kr - (tkr !== null ? tkr : 0.3),
-        text: `スパイク決定率${fbP(kr)}${ref}。決める役割をしっかり果たした。` });
-    }
-    if (kr !== null && (tkr !== null ? kr <= tkr - 0.08 : kr < 0.25)) {
-      issue.push({ sev: (tkr !== null ? tkr : 0.3) - kr,
-        text: `スパイク決定率${fbP(kr)}${ref}と、低めだった。`,
-        action: 'トスが合わなかった場面をセッターと動画で確認し、決まりにくい状況（低いトス・ブロック2枚など）での打ち方（コース・フェイント・つなぐ）を決めておく。' });
-    }
-    if (st.errors >= 3 && st.errors / st.attempts >= 0.12) {
-      issue.push({ sev: st.errors / st.attempts,
-        text: `スパイクミスが${st.errors}本（打数の${fbP(st.errors / st.attempts)}）。`,
-        action: 'ミスが出る場面（ネット際・アウト・助走が合わない時）を動画で確認し、その場面では無理に強く打たず確実に返す打ち方を決める。' });
-    }
-    if (st.blocked >= 3 && st.blocked / st.attempts >= 0.15) {
-      issue.push({ sev: st.blocked / st.attempts,
-        text: `被ブロックが${st.blocked}本（打数の${fbP(st.blocked / st.attempts)}）。`,
-        action: 'ブロックが見えている時の打ち分け（クロス・ストレート・ブロックアウト・フェイント）を練習で増やす。' });
-    }
-    if (st.attempts >= 10 && st.errors === 0) {
-      good.push({ sev: 0.05, text: `スパイクミス0本（${st.attempts}本）。安定して打てた。` });
-    }
-  }
-
-  // --- サーブ ---
-  if (st.serve_attempts >= 8) {
-    const er = st.serve_errors / st.serve_attempts;
-    if (st.serve_errors >= 2 && er >= 0.15) {
-      issue.push({ sev: er,
-        text: `サーブミスが${st.serve_errors}本（${st.serve_attempts}本中、${fbP(er)}）。`,
-        action: 'サーブは狙うゾーンを決めて打ち、ミスした時はネット・アウトのどちらかを数えて原因をつかむ。攻めるサーブは変えずに、確率を上げる。' });
-    } else if (st.serve_attempts >= 10 && st.serve_errors === 0) {
-      good.push({ sev: 0.05, text: `サーブミス0本（${st.serve_attempts}本）。確実にサーブを入れた。` });
-    }
-    const eff = st.serve_efficiency;
-    const teff = teamOk('serve_attempts', 20) ? tm.serve_efficiency : null;
-    if (eff !== null && (st.serve_aces >= 2 || (teff !== null ? eff >= teff + 0.08 : eff >= 0.25))) {
-      good.push({ sev: eff - (teff !== null ? teff : 0.15),
-        text: `サーブ効果率${fbP(eff)}（エース${st.serve_aces}本）${teff !== null ? `（チーム平均${fbP(teff)}）` : ''}。相手を崩せていた。` });
-    }
-    if (eff !== null && er < 0.15 && st.serve_attempts >= 10 && eff <= 0.05) {
-      issue.push({ sev: 0.1 - eff,
-        text: `サーブ効果率${fbP(eff)}。入ってはいるが、相手に楽に返されている。`,
-        action: 'サーブのコース（レシーバーの間・ライン際）と強さに変化をつけて、相手のAパスを減らす。' });
-    }
-  }
-
-  // --- レシーブ ---
-  if (st.receive_attempts >= 8) {
-    const ab = st.receive_ab_rate;
-    const tab = teamOk('receive_attempts', 20) ? tm.receive_ab_rate : null;
-    const ref = `（${st.receive_attempts}本${tab !== null ? `、チーム平均${fbP(tab)}` : ''}）`;
-    if (ab !== null && (tab !== null ? ab >= Math.max(0.65, tab + 0.1) : ab >= 0.7)) {
-      good.push({ sev: ab - (tab !== null ? tab : 0.6),
-        text: `サーブレシーブAB率${fbP(ab)}${ref}。セッターに良い形で返せた。` });
-    }
-    if (ab !== null && (tab !== null ? ab <= Math.min(0.5, tab - 0.1) : ab < 0.45)) {
-      issue.push({ sev: (tab !== null ? tab : 0.6) - ab,
-        text: `サーブレシーブAB率${fbP(ab)}${ref}と、低めだった。`,
-        action: 'コースを指定したサーブを受ける反復練習をして、乱れやすい方向（体の正面でない球）への入り方を確認する。' });
-    }
-    const dRate = st.receive_d / st.receive_attempts;
-    if (st.receive_d >= 3 && dRate >= 0.3) {
-      issue.push({ sev: dRate,
-        text: `Dパスが${st.receive_d}本（${fbP(dRate)}）。大きく乱れる場面が多かった。`,
-        action: '大きく乱れた時の2段攻撃（誰が持つか・どこへ上げるか）の約束事を決めておく。' });
-    }
-    if (st.receive_errors >= 2) {
-      issue.push({ sev: st.receive_errors / st.receive_attempts + 0.1,
-        text: `レシーブミスが${st.receive_errors}本。`,
-        action: 'レシーブミスの場面（サーブの種類・コース）を動画で確認し、構え方と最初の一歩を揃える。' });
-    } else if (st.receive_attempts >= 10 && st.receive_errors === 0) {
-      good.push({ sev: 0.05, text: `レシーブミス0本（${st.receive_attempts}本）。` });
-    }
-  }
-
-  // --- ブロック ---
-  if (st.block_attempts >= 5) {
-    const touch = (st.block_touch_own || 0) + (st.block_touch_opp || 0);
-    if (st.block_points >= 2) {
-      good.push({ sev: st.block_points / 10 + 0.1, text: `ブロック得点${st.block_points}本。` });
-    }
-    if (touch >= 5) {
-      good.push({ sev: touch / 40, text: `ブロックにタッチ（ワンチ）が${touch}本。守備につないだ。` });
-    }
-    if (st.block_errors >= 3 && st.block_errors / st.block_attempts >= 0.15) {
-      issue.push({ sev: st.block_errors / st.block_attempts,
-        text: `ブロックに触れたが拾えず失点したボールが${st.block_errors}本。`,
-        action: 'ブロックタッチ後のカバー（ディグの位置・声かけ）を決める。触れたボールを必ずつなぐ約束にする。' });
-    }
-  }
-
-  const touches = st.attempts + st.serve_attempts + st.receive_attempts + st.block_attempts;
-  good.sort((a, b) => b.sev - a.sev);
-  issue.sort((a, b) => b.sev - a.sev);
-  return { good: good.slice(0, 3), issue: issue.slice(0, 3), enough: touches >= 10 };
-}
-
-function renderPlayerFeedback(st, tm, notes) {
-  const sec = document.getElementById('playerFeedbackSection');
-  const body = document.getElementById('playerFeedbackBody');
-  if (!sec || !body) return;
-  if (tm === undefined) { sec.style.display = 'none'; return; }
-  sec.style.display = '';
-  const fb = playerFeedback(st, tm);
-  let html = '';
-  if (!fb.enough) {
-    html = '<p class="hint" style="margin-top:0">出場してのプレー数が少ないため、傾向は出していません。</p>';
-  } else {
-    html += fbSection('good', '良かった点', fb.good.map(x => escapeHtml(x.text)), false);
-    html += fbSection('issue', '課題', fb.issue.map(x => escapeHtml(x.text)), false);
-    html += fbSection('next', '次に意識すること',
-      fb.issue.filter(x => x.action).map(x => escapeHtml(x.action)), true);
-    if (!fb.good.length && !fb.issue.length) {
-      html = '<p class="hint" style="margin-top:0">チーム平均と比べて、目立って良い点・悪い点は見当たりませんでした。</p>';
-    } else if (!fb.issue.length) {
-      html += '<p class="hint" style="margin-top:0">目立った課題は見当たりませんでした。この調子で続けましょう。</p>';
-    }
-  }
-  html += fbNotesHtml(notes);
-  html += '<p class="hint">数字から自動で作った目安です（チーム平均との比較）。実際のプレーは動画やコーチの見立てと合わせて見てください。</p>';
-  body.innerHTML = html;
 }
 
 // チーム全体（選んだ1試合、または複数試合の合計）の振り返り
@@ -2453,8 +2310,6 @@ function playerStatsInSet(dataObj, number, setNumber) {
 // 選んだ試合（1試合）での、選手のセット切り替え用の材料
 function matchPlayerCtx(dataObj, number) {
   return {
-    teamStats: (dataObj.team && dataObj.team.total) || null,
-    notes: [{ text: dataObj.analystNotes && dataObj.analystNotes.players && dataObj.analystNotes.players[number] }],
     maxSets: (dataObj.sets || []).length,
     statsFor: n => playerStatsInSet(dataObj, number, n),
     rowsFor: n => {
@@ -2470,7 +2325,6 @@ function showNoRecordDetail(name, message) {
   document.getElementById('detailCard2').style.display = 'none';
   document.getElementById('detailName').textContent = name;
   document.getElementById('detailNumber').textContent = message;
-  document.getElementById('playerFeedbackSection').style.display = 'none';
   document.getElementById('detailTiles').innerHTML = '';
   document.getElementById('detailSetBody').innerHTML =
     '<tr><td colspan="7" class="hint">出場記録がありません</td></tr>';
@@ -2541,8 +2395,6 @@ function renderCombinedPlayerView(nums) {
         return sp ? { ...sp, matchLabel: labelOf(entry) } : null;
       });
       const ctx = {
-        teamStats: combineStatsList(dataList.map(d => d.team && d.team.total)),
-        notes: dataList.map(d => ({ label: dataNoteLabel(d), text: d.analystNotes && d.analystNotes.players && d.analystNotes.players[number] })),
         maxSets,
         statsFor: n => combineStatsList(dataList.map(d => playerStatsInSet(d, number, n))),
         rowsFor: n => entries.map((entry, i) => {
