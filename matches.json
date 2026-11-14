@@ -1,5 +1,10 @@
 [
   {
+    "matchDate": "08/11/2026",
+    "opponent": "早稲田大学",
+    "dataFile": "2026-11-08_早稲田大学.json"
+  },
+  {
     "matchDate": "31/10/2026",
     "opponent": "岩手成年女子選抜",
     "dataFile": "2026-10-31_岩手成年女子選抜.json"
