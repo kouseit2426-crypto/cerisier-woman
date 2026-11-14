@@ -730,8 +730,8 @@
       </button>
       <div class="collapsible-body">
         <p class="hint" style="margin-top:-6px">
-          相手のスパイクが決まったときの、自分たちのコート上の着地ゾーンです。色が濃いほど多く決められています。
-          ゾーンが入力されている決定だけを数えています。
+          相手のスパイクが決まったときの、自分たちのコート上の着地ゾーン（1〜9）と、ゾーンの中の位置（A〜D）です。
+          色が濃いほど多く決められています。ゾーンが入力されている決定だけを数えています。
         </p>
         <div id="oppHeatmapBody"></div>
       </div>
@@ -2491,28 +2491,94 @@ function combineOppKillZones(dataList) {
   return merged;
 }
 
+// コートの図（奥がネット。手前に向かって広がる遠近の形）。ゾーンの中は、左上C・右上B・左下D・右下Aに分ける。
+const HEAT_SUB_LAYOUT = [['C', 'B'], ['D', 'A']];
+const HEAT_GEO = { yTop: 118, yRows: [118, 188, 292, 470], xTopL: 150, xTopR: 450, xBotL: 0, xBotR: 600 };
+
+function heatPoint(u, y) {
+  const g = HEAT_GEO, t = (y - g.yTop) / (g.yRows[3] - g.yTop);
+  const l = g.xTopL + (g.xBotL - g.xTopL) * t, r = g.xTopR + (g.xBotR - g.xTopR) * t;
+  return [l + (r - l) * u, y];
+}
+
+// u0〜u1（0〜1：コートの横位置）、y0〜y1の四角形を、遠近のかかった形の頂点にする
+function heatPoly(u0, u1, y0, y1) {
+  return [heatPoint(u0, y0), heatPoint(u1, y0), heatPoint(u1, y1), heatPoint(u0, y1)]
+    .map(pt => pt[0].toFixed(1) + ',' + pt[1].toFixed(1)).join(' ');
+}
+
+function heatCenter(u0, u1, y0, y1) {
+  const a = heatPoint((u0 + u1) / 2, (y0 + y1) / 2);
+  return [a[0], a[1]];
+}
+
+let oppHeatMode = null;       // 'zone'（ゾーンごと）／'sub'（A〜Dまで細かく）
+let oppHeatDataList = [];
+
+function setOppHeatMode(mode) {
+  oppHeatMode = mode;
+  document.getElementById('oppHeatmapBody').innerHTML = oppHeatmapHtml(oppHeatDataList);
+}
+
 function oppHeatmapHtml(dataList) {
   const hz = combineOppKillZones(dataList);
   if (!hz) return '<p class="hint">この試合にはコースのデータがありません（2026/11/08以降の試合から集計しています）。</p>';
   if (!hz.coded) return `<p class="hint">相手に決められた${hz.kills}本のうち、着地ゾーンが入力されているものがありません。</p>`;
-  const max = Math.max(...Object.values(hz.zones));
-  const W = 300, H = 300, pad = 6, cw = (W - pad * 2) / 3, ch = (H - pad * 2) / 3;
-  let svg = `<svg viewBox="0 0 ${W} ${H + 24}" width="100%" style="max-width:340px;display:block;margin:0 auto" role="img" aria-label="相手に決められたコースのヒートマップ">`;
-  svg += `<text x="${W / 2}" y="14" text-anchor="middle" font-size="11" fill="var(--text-muted)">ネット</text>`;
+  const subTotal = Object.values(hz.subzones).reduce((a, b) => a + b, 0);
+  // 初期表示：A〜Dまで入力されたものが半分以上あれば細かい表示、そうでなければゾーンごとの表示
+  const mode = oppHeatMode || (subTotal * 2 >= hz.coded ? 'sub' : 'zone');
+  const fine = mode === 'sub';
+  const vals = fine ? Object.values(hz.subzones) : Object.values(hz.zones);
+  const max = Math.max(1, ...vals);
+  const g = HEAT_GEO;
+  let svg = `<svg viewBox="0 0 600 ${g.yRows[3] + 6}" width="100%" style="max-width:460px;display:block;margin:0 auto" role="img" aria-label="相手に決められたコースのヒートマップ">`;
+  // ネット
+  const nl = heatPoint(0, g.yTop - 10), nr = heatPoint(1, g.yTop - 10);
+  svg += `<rect x="${nl[0] - 4}" y="${g.yTop - 52}" width="${nr[0] - nl[0] + 8}" height="42" rx="3" fill="var(--page-plane)" stroke="var(--border)"/>`;
+  svg += `<text x="300" y="${g.yTop - 26}" text-anchor="middle" font-size="13" fill="var(--text-muted)">ネット</text>`;
+  const cellFill = (n, extra) => {
+    const op = n ? 0.15 + 0.8 * (n / max) : 0;
+    return { op, dark: op > 0.55,
+      shape: (poly) => `<polygon points="${poly}" fill="var(--page-plane)" stroke="var(--border)" ${extra || ''}/>`
+        + (n ? `<polygon points="${poly}" fill="var(--series-blue)" fill-opacity="${op.toFixed(2)}"/>` : '') };
+  };
   HEAT_ZONE_LAYOUT.forEach((row, ri) => row.forEach((z, ci) => {
-    const n = hz.zones[z] || 0;
-    const share = n / max;
-    const x = pad + ci * cw, y = 20 + pad + ri * ch - pad;
-    const opacity = n ? 0.15 + 0.8 * share : 0;
-    const dark = opacity > 0.55;
-    svg += `<rect x="${x}" y="${y}" width="${cw - 3}" height="${ch - 3}" rx="6" fill="var(--page-plane)" stroke="var(--border)"/>`;
-    if (n) svg += `<rect x="${x}" y="${y}" width="${cw - 3}" height="${ch - 3}" rx="6" fill="var(--series-blue)" fill-opacity="${opacity.toFixed(2)}"/>`;
-    svg += `<text x="${x + 8}" y="${y + 15}" font-size="11" fill="${dark ? '#ffffff' : 'var(--text-muted)'}">${z}</text>`;
-    svg += `<text x="${x + (cw - 3) / 2}" y="${y + (ch - 3) / 2 + 6}" text-anchor="middle" font-size="22" font-weight="600" fill="${dark ? '#ffffff' : 'var(--text-primary)'}">${n || ''}</text>`;
-    if (n) svg += `<text x="${x + (cw - 3) / 2}" y="${y + (ch - 3) / 2 + 24}" text-anchor="middle" font-size="11" fill="${dark ? '#ffffff' : 'var(--text-muted)'}">${(n / hz.coded * 100).toFixed(0)}%</text>`;
+    const y0 = g.yRows[ri], y1 = g.yRows[ri + 1], u0 = ci / 3, u1 = (ci + 1) / 3;
+    const zn = hz.zones[z] || 0;
+    if (!fine) {
+      const c = cellFill(zn);
+      svg += c.shape(heatPoly(u0, u1, y0, y1));
+      const ctr = heatCenter(u0, u1, y0, y1);
+      const fs = ri === 0 ? 20 : ri === 1 ? 26 : 32;
+      svg += `<text x="${ctr[0].toFixed(1)}" y="${(ctr[1] - 2).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="${c.dark ? '#ffffff' : 'var(--text-primary)'}">${z}</text>`;
+      if (zn) svg += `<text x="${ctr[0].toFixed(1)}" y="${(ctr[1] + fs * 0.7).toFixed(1)}" text-anchor="middle" font-size="${Math.round(fs * 0.55)}" fill="${c.dark ? '#ffffff' : 'var(--text-muted)'}">${zn}本（${(zn / hz.coded * 100).toFixed(0)}%）</text>`;
+      return;
+    }
+    // A〜Dまで細かく：ゾーンの中を2×2に分ける
+    HEAT_SUB_LAYOUT.forEach((subRow, sr) => subRow.forEach((letter, sc) => {
+      const ym = (y0 + y1) / 2;
+      const sy0 = sr === 0 ? y0 : ym, sy1 = sr === 0 ? ym : y1;
+      const su0 = u0 + (u1 - u0) * sc / 2, su1 = u0 + (u1 - u0) * (sc + 1) / 2;
+      const n = hz.subzones[z + letter] || 0;
+      const c = cellFill(n);
+      svg += c.shape(heatPoly(su0, su1, sy0, sy1));
+      const ctr = heatCenter(su0, su1, sy0, sy1);
+      const fs = ri === 0 ? 14 : ri === 1 ? 18 : 24;
+      svg += `<text x="${(ctr[0] - fs * 0.0).toFixed(1)}" y="${(ctr[1] + fs * 0.35).toFixed(1)}" text-anchor="middle" font-size="${fs}" font-weight="600" fill="${c.dark ? '#ffffff' : 'var(--text-primary)'}">${n || ''}</text>`;
+      const lp = heatPoint(su0 + (su1 - su0) * 0.1, sy0 + (sy1 - sy0) * 0.32);
+      svg += `<text x="${lp[0].toFixed(1)}" y="${lp[1].toFixed(1)}" text-anchor="start" font-size="9" fill="var(--text-muted)" opacity="0.75" style="pointer-events:none">${letter}</text>`;
+    }));
+    // ゾーンの番号（うっすら大きく）
+    const zc = heatCenter(u0, u1, y0, y1);
+    svg += `<text x="${zc[0].toFixed(1)}" y="${(zc[1] + 8).toFixed(1)}" text-anchor="middle" font-size="${ri === 0 ? 26 : ri === 1 ? 34 : 46}" font-weight="700" fill="var(--text-muted)" fill-opacity="0.22" style="pointer-events:none">${z}</text>`;
   }));
   svg += '</svg>';
-  let html = `<p class="hint" style="margin-top:0">相手に決められた${hz.kills}本のうち、着地ゾーンが入力されているのは${hz.coded}本（${(hz.coded / hz.kills * 100).toFixed(0)}%）です。割合は、この${hz.coded}本を100%としています。</p>`;
+
+  const chip = (m, label) => `<button type="button" class="player-chip${mode === m ? ' selected' : ''}" onclick="setOppHeatMode('${m}')">${label}</button>`;
+  let html = `<div class="player-grid" style="margin-bottom:10px">${chip('zone', 'ゾーンごと')}${chip('sub', 'A〜Dまで細かく')}</div>`;
+  html += `<p class="hint" style="margin-top:0">相手に決められた${hz.kills}本のうち、着地ゾーンが入力されているのは${hz.coded}本（${(hz.coded / hz.kills * 100).toFixed(0)}%）です。`
+    + (fine ? `そのうちA〜Dまで入力されているのは${subTotal}本で、この${subTotal}本を図にしています。` : `割合は、この${hz.coded}本を100%としています。`)
+    + '</p>';
   html += svg;
   if (dataList.length >= 2 && hz.matchCount < dataList.length) {
     html += `<p class="hint">選んだ${dataList.length}試合のうち、データがある${hz.matchCount}試合の合計です。</p>`;
@@ -2523,6 +2589,7 @@ function oppHeatmapHtml(dataList) {
 function renderOppHeatmap(dataList, matchCount) {
   const body = document.getElementById('oppHeatmapBody');
   if (!body) return;
+  oppHeatDataList = dataList;
   document.getElementById('oppHeatmapLabel').textContent =
     matchCount >= 2 ? `相手に決められたコース（ヒートマップ）（選んだ${matchCount}試合の合計）` : '相手に決められたコース（ヒートマップ）';
   body.innerHTML = oppHeatmapHtml(dataList);
