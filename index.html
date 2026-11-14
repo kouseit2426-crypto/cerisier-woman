@@ -609,7 +609,7 @@
     <div class="card" id="teamReviewCard">
       <div class="collapsible" style="margin-top:0">
         <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
-          <h3 class="section-label" id="teamReviewLabel" style="margin-top:0">振り返りと次の試合の改善策</h3>
+          <h3 class="section-label" id="teamReviewLabel" style="margin-top:0">振り返り</h3>
           <span class="collapse-arrow">▾</span>
         </button>
         <div class="collapsible-body">
@@ -2217,21 +2217,17 @@ function renderTeamReview(dataList, matchCount) {
   const label = document.getElementById('teamReviewLabel');
   if (!body) return;
   label.textContent = matchCount >= 2
-    ? `振り返りと次の試合の改善策（選んだ${matchCount}試合の合計）`
-    : '振り返りと次の試合の改善策';
+    ? `振り返り（選んだ${matchCount}試合の合計）`
+    : '振り返り';
   const fb = teamFeedback(dataList);
   if (!fb) { body.innerHTML = '<p class="hint">データがありません。</p>'; return; }
   let html = `<p style="margin:0 0 14px;font-size:14px">セット ${fb.won}勝${fb.lost}敗（${escapeHtml(fb.headline)}）</p>`;
   html += fbSection('good', '良かった点', fb.good.map(x => escapeHtml(x.text)), false);
   html += fbSection('issue', '課題（何がうまくいかなかったか）', fb.issue.map(x => escapeHtml(x.text)), false);
-  html += fbSection('next', '次の試合の改善策',
-    fb.issue.filter(x => x.action).slice(0, 4).map(x =>
-      `${escapeHtml(x.action)}<span class="fb-sub">　（課題：${escapeHtml(x.short)}）</span>`), true);
   if (!fb.issue.length) {
     html += '<p class="hint" style="margin-top:0">数字の上では、大きな課題は見当たりませんでした。</p>';
   }
   html += fbNotesHtml(dataList.map(d => ({ label: dataList.length >= 2 ? dataNoteLabel(d) : '', text: d.analystNotes && d.analystNotes.team })));
-  html += '<p class="hint">数字から自動で作った目安です（サイドアウト率55%・AB率55%・サーブミス12%などの基準と比べています）。動画やコーチの見立てと合わせて使ってください。</p>';
   body.innerHTML = html;
 }
 
