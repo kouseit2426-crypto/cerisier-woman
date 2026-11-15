@@ -1,5 +1,10 @@
 [
   {
+    "matchDate": "14/11/2026",
+    "opponent": "敬愛大学",
+    "dataFile": "2026-11-14_敬愛大学.json"
+  },
+  {
     "matchDate": "08/11/2026",
     "opponent": "早稲田大学",
     "dataFile": "2026-11-08_早稲田大学.json"
