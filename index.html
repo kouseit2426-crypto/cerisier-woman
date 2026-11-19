@@ -2841,7 +2841,7 @@ function renderTeamOverall() {
 const SC_OWN = [['4','3','2'], ['7','8','9'], ['5','6','1']];   // ネットに近い行 → 奥の行
 const SC_OPP = [['2','3','4'], ['9','8','7'], ['1','6','5']];   // 相手コート：ネットに近い行 → 奥の行
 const SC_SUB = { A: [0.25, 0.25], B: [0.25, -0.25], C: [-0.25, -0.25], D: [-0.25, 0.25] };
-const SC_COL = { kill: '#1f6fd1', cont: '#9aa6bb', blk: '#e48a3d', err: '#c9453d' };
+const SC_COL = { kill: '#1f6fd1', cont: '#222222', blk: '#e48a3d', err: '#c9453d' };
 const SC_LAB = { kill: '決定', cont: '継続', blk: '被ブロック', err: 'ミス' };
 let scPlayer = 'team';
 let scScope = 'all';
@@ -2887,22 +2887,38 @@ function scCourtSvg(list) {
   };
   const items = list.filter(a => a.from && a.to && own[a.from] && opp[a.to[0]])
     .sort((p, q) => (p.from + p.to + p.ev).localeCompare(q.from + q.to + q.ev));
-  const STEP = 7.5;
+  const arrow = (x1, y1, x2, y2, c, w, op) => {
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    const L = 8 + w * 0.9, Wd = 4 + w * 0.5;
+    const p2 = [x2 - L * Math.cos(ang) + Wd * Math.sin(ang), y2 - L * Math.sin(ang) - Wd * Math.cos(ang)];
+    const p3 = [x2 - L * Math.cos(ang) - Wd * Math.sin(ang), y2 - L * Math.sin(ang) + Wd * Math.cos(ang)];
+    o.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${(x2 - Math.cos(ang) * L * 0.8).toFixed(1)}" y2="${(y2 - Math.sin(ang) * L * 0.8).toFixed(1)}" stroke="${c}" stroke-width="${w}" stroke-linecap="round" opacity="${op}"/>`);
+    o.push(`<polygon points="${x2.toFixed(1)},${y2.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)} ${p3[0].toFixed(1)},${p3[1].toFixed(1)}" fill="${c}" opacity="${op}"/>`);
+    o.push(`<circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="${(3.2 + w * 0.35).toFixed(1)}" fill="${c}" stroke="#fff" stroke-width="1.4" opacity="${op}"/>`);
+  };
+  // 同じ位置から出る／入る矢印を、ゾーンの外にはみ出さない範囲で横にずらす
+  const spread = (k, n, step, maxHalf) => {
+    if (n <= 1) return 0;
+    const st = Math.min(step, (maxHalf * 2) / (n - 1));
+    return (k - (n - 1) / 2) * st;
+  };
+  // 全員同じ表示：1本＝矢印1本。色は 決定=青／継続=黒／被ブロック=橙／ミス=赤
+  const n = items.length;
+  const lw = n > 80 ? 1.3 : n > 36 ? 1.8 : 2.6;
+  const op = n > 80 ? 0.6 : n > 36 ? 0.75 : 0.95;
   const outc = {}, inc = {}, outi = {}, ini = {};
   items.forEach(a => { outc[a.from] = (outc[a.from] || 0) + 1; inc[a.to] = (inc[a.to] || 0) + 1; });
-  items.forEach(a => {
+  const pos = items.map(a => {
     const ko = outi[a.from] || 0; outi[a.from] = ko + 1;
     const ki = ini[a.to] || 0; ini[a.to] = ki + 1;
     let [x1, y1] = own[a.from]; let [x2, y2] = pt(a.to);
-    x1 += (ko - (outc[a.from] - 1) / 2) * STEP; x2 += (ki - (inc[a.to] - 1) / 2) * STEP;
-    const ang = Math.atan2(y2 - y1, x2 - x1); const c = SC_COL[scResult(a.ev)];
-    const L = 10, Wd = 5;
-    const p2 = [x2 - L * Math.cos(ang) + Wd * Math.sin(ang), y2 - L * Math.sin(ang) - Wd * Math.cos(ang)];
-    const p3 = [x2 - L * Math.cos(ang) - Wd * Math.sin(ang), y2 - L * Math.sin(ang) + Wd * Math.cos(ang)];
-    o.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${(x2 - Math.cos(ang) * 8).toFixed(1)}" y2="${(y2 - Math.sin(ang) * 8).toFixed(1)}" stroke="${c}" stroke-width="2.6" stroke-linecap="round" opacity="0.95"/>`);
-    o.push(`<polygon points="${x2.toFixed(1)},${y2.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)} ${p3[0].toFixed(1)},${p3[1].toFixed(1)}" fill="${c}"/>`);
-    o.push(`<circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="4.2" fill="${c}" stroke="#fff" stroke-width="1.5"/>`);
+    x1 += spread(ko, outc[a.from], n > 36 ? 3 : 7.5, ZW * 0.4);
+    x2 += spread(ki, inc[a.to], n > 36 ? 2.5 : 5, ZW * 0.2);
+    return { a, x1, y1, x2, y2 };
   });
+  const ord = { cont: 0, blk: 1, err: 2, kill: 3 };   // 決定・ミスが埋もれないよう上に重ねる
+  pos.sort((p, q) => ord[scResult(p.a.ev)] - ord[scResult(q.a.ev)])
+    .forEach(e => arrow(e.x1, e.y1, e.x2, e.y2, SC_COL[scResult(e.a.ev)], lw, op));
   o.push('</svg>');
   return o.join('');
 }
@@ -2936,30 +2952,20 @@ function renderSpikeCourse() {
   courtEl.innerHTML = scCourtSvg(list);
   lgEl.innerHTML = Object.keys(SC_COL).map(k => `<span><i style="background:${SC_COL[k]}"></i>${SC_LAB[k]}</span>`).join('');
   // 表：打った位置 → 落ちたゾーン
-  const agg = {};
-  withCourse.forEach(a => {
-    const key = a.from + '>' + a.to;
-    if (!agg[key]) agg[key] = { from: a.from, to: a.to, kill: 0, cont: 0, blk: 0, err: 0 };
-    agg[key][scResult(a.ev)] += 1;
-  });
-  const rows = Object.values(agg).sort((p, q) => {
-    const np = p.kill + p.cont + p.blk + p.err, nq = q.kill + q.cont + q.blk + q.err;
-    return nq - np || (p.from + p.to).localeCompare(q.from + q.to);
-  });
-  let th = '<table class="sc-table"><thead><tr><th>打った位置</th><th></th><th>落ちたゾーン</th><th>本数</th><th>決定率</th><th>内訳</th></tr></thead><tbody>';
-  rows.forEach(r => {
-    const n = r.kill + r.cont + r.blk + r.err;
-    const pills = ['kill', 'cont', 'blk', 'err'].filter(k => r[k]).map(k => `<span class="sc-pill" style="background:${SC_COL[k]}">${SC_LAB[k]}${r[k]}</span>`).join('');
-    th += `<tr><td>${r.from}</td><td style="text-align:center;color:#9aa3b5">→</td><td>${r.to}</td><td>${n}</td><td>${Math.round(r.kill / n * 100)}%</td><td style="text-align:left">${pills}</td></tr>`;
-  });
-  th += '</tbody></table>';
+  const cnt = { kill: 0, cont: 0, blk: 0, err: 0 };
+  withCourse.forEach(a => { cnt[scResult(a.ev)] += 1; });
+  const N = withCourse.length;
+  const rateTxt = v => N ? (Math.round(v * 1000) / 10).toFixed(1) + '%' : '-';
+  const pills = ['kill', 'cont', 'blk', 'err'].map(k => `<span class="sc-pill" style="background:${SC_COL[k]}">${SC_LAB[k]} ${cnt[k]}</span>`).join('');
   const none = list.length - withCourse.length;
   sideEl.innerHTML =
-    `<div class="sc-kpis"><div class="sc-kpi"><div class="k">コース入力あり</div><div class="v">${withCourse.length}本</div></div>`
-    + `<div class="sc-kpi"><div class="k">うち決定</div><div class="v">${kills}本</div></div>`
-    + `<div class="sc-kpi"><div class="k">入力なし</div><div class="v">${none}本</div></div></div>`
-    + (withCourse.length ? th : '<p class="hint">この条件では、コースが入力されたスパイクがありません。</p>')
-    + `<p class="hint">矢印1本＝スパイク1本。始点＝打った位置、終点＝落ちたゾーン。コースの入力がないスパイクは図に出ません。`
+    `<div class="sc-kpis"><div class="sc-kpi"><div class="k">本数（コース入力あり）</div><div class="v">${N}本</div></div>`
+    + `<div class="sc-kpi"><div class="k">決定率</div><div class="v">${rateTxt(cnt.kill / (N || 1))}</div></div>`
+    + `<div class="sc-kpi"><div class="k">効果率</div><div class="v">${rateTxt((cnt.kill - cnt.err - cnt.blk) / (N || 1))}</div></div></div>`
+    + (N ? `<div style="margin:4px 0 10px">${pills}</div>` : '<p class="hint">この条件では、コースが入力されたスパイクがありません。</p>')
+    + `<p class="hint">決定率＝決定÷本数。効果率＝（決定－ミス－被ブロック）÷本数。選んだ選手・セットの、コースが入力されたスパイクだけで計算しています。`
+    + (none ? `コースの入力がないスパイクが${none}本あります（図・数字に含みません）。` : '')
+    + `</p><p class="hint">矢印1本＝スパイク1本。始点＝打った位置、終点＝落ちたゾーン。青＝決定、黒＝継続、赤＝ミス、橙＝被ブロック。`
     + (info.missing ? `選んだ試合のうち${info.missing}試合は、コースのデータがないため含まれていません。` : '') + '</p>';
 }
 
